@@ -12,3 +12,14 @@
 # Built Visual Studio Code Extensions
 *.vsix
 
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+
+# Operating system
+.DS_Store
