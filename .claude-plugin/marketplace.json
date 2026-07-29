@@ -1,0 +1,34 @@
+{
+  "name": "alexbello-agent-skills",
+  "owner": {
+    "name": "Alex Bello"
+  },
+  "description": "Reusable engineering skills maintained by Alex Bello.",
+  "plugins": [
+    {
+      "name": ".NET-skills",
+      "source": "./",
+      "description": "Skills for .NET and C# projects.",
+      "skills": [
+        "./skills/csharp-xml-comments"
+      ]
+    },
+    {
+      "name": "documentation-skills",
+      "source": "./",
+      "description": "Skills for creating and maintaining documentation.",
+      "skills": [
+        "./skills/skill-authoring"
+      ]
+    },
+    {
+      "name": "developer-workflow-skills",
+      "source": "./",
+      "description": "Skills for versioning and source-control workflows.",
+      "skills": [
+        "./skills/bump-version",
+        "./skills/source-control"
+      ]
+    }
+  ]
+}
