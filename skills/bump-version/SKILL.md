@@ -8,7 +8,8 @@ description: Bump package.json's version before committing, to satisfy the pre-c
 This repo's pre-commit hook (`lefthook.yml` → `scripts/check-version-bump.sh`)
 **rejects any commit whose `package.json` "version" matches `HEAD`**. Every
 commit must change the version. This skill picks the right bump and applies it
-via `scripts/bump-version.mjs`, which does the (fiddly) SemVer arithmetic.
+via its bundled `scripts/bump-version.mjs`, which does the (fiddly) SemVer
+arithmetic.
 
 ## Workflow
 
@@ -22,7 +23,8 @@ via `scripts/bump-version.mjs`, which does the (fiddly) SemVer arithmetic.
 
    **This project is pre-1.0** (currently `0.1.0`), so only `minor`, `patch`,
    and alpha/beta prereleases are in use until the first stable launch. There is
-   no `major` bump — `scripts/bump-version.mjs major` is intentionally rejected.
+   no `major` bump — the bundled script's `major` command is intentionally
+   rejected.
 
    Classify per SemVer 2.0.0, relative to the public API (exports in
    `src/index.ts`, the `bin` CLI, and documented behavior):
@@ -46,8 +48,13 @@ via `scripts/bump-version.mjs`, which does the (fiddly) SemVer arithmetic.
 
 2. **Apply the bump.** Run the script (it edits `package.json` in place):
 
+   The script lives beside this `SKILL.md`, not in the target project. Resolve
+   the skill directory from this file's location, then run it while the shell's
+   working directory is the target project's root (so it updates that project's
+   `package.json`):
+
    ```sh
-   node scripts/bump-version.mjs <minor|patch> [--pre alpha|beta] [--hash[=N]]
+   node <skill-directory>/scripts/bump-version.mjs <minor|patch> [--pre alpha|beta] [--hash[=N]]
    ```
 
    Add `--dry-run` first if you want to preview without writing.
@@ -92,11 +99,11 @@ guaranteed to sort in commit order**. Use the counter form (`--pre` without
 
 | User intent | Command |
 | --- | --- |
-| Bug fix | `node scripts/bump-version.mjs patch` |
-| New feature | `node scripts/bump-version.mjs minor` |
-| Breaking change (pre-1.0) | warn the user, then `node scripts/bump-version.mjs minor` |
-| Start a minor alpha | `node scripts/bump-version.mjs minor --pre alpha` |
-| Next alpha iteration | `node scripts/bump-version.mjs minor --pre alpha` |
-| Promote alpha → beta | `node scripts/bump-version.mjs minor --pre beta` |
-| Beta tagged with commit hash | `node scripts/bump-version.mjs minor --pre beta --hash` |
-| Ship the prerelease as stable | `node scripts/bump-version.mjs minor` |
+| Bug fix | `node <skill-directory>/scripts/bump-version.mjs patch` |
+| New feature | `node <skill-directory>/scripts/bump-version.mjs minor` |
+| Breaking change (pre-1.0) | warn the user, then `node <skill-directory>/scripts/bump-version.mjs minor` |
+| Start a minor alpha | `node <skill-directory>/scripts/bump-version.mjs minor --pre alpha` |
+| Next alpha iteration | `node <skill-directory>/scripts/bump-version.mjs minor --pre alpha` |
+| Promote alpha → beta | `node <skill-directory>/scripts/bump-version.mjs minor --pre beta` |
+| Beta tagged with commit hash | `node <skill-directory>/scripts/bump-version.mjs minor --pre beta --hash` |
+| Ship the prerelease as stable | `node <skill-directory>/scripts/bump-version.mjs minor` |
