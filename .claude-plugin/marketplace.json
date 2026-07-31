@@ -14,20 +14,14 @@
       ]
     },
     {
-      "name": "documentation-skills",
+      "name": "engineering-skills",
       "source": "./",
       "description": "Skills for creating and maintaining documentation.",
       "skills": [
-        "./skills/skill-authoring"
-      ]
-    },
-    {
-      "name": "developer-workflow-skills",
-      "source": "./",
-      "description": "Skills for versioning and source-control workflows.",
-      "skills": [
         "./skills/bump-version",
-        "./skills/source-control"
+        "./skills/skill-authoring",
+        "./skills/source-control",
+        "./skills/thin-slice"
       ]
     }
   ]

@@ -8,7 +8,7 @@ The v1 contract targets behavior confirmed for `tea` 0.14 and `gh` 2.96.
 | Authentication status | yes | yes |
 | Repository view | yes | yes |
 | Issue list/view/comments | yes | yes |
-| Issue create/comment | yes | yes |
+| Issue create/edit/comment | yes | yes |
 | Pull-request list/view/comments | yes | yes |
 | Pull-request diff | yes | yes |
 | Pull-request checks | from pull `ci` data | `pr checks` |

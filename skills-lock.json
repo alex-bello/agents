@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "bump-version": {
+      "source": "/Users/alexbello/Git/agents",
+      "sourceType": "local",
+      "computedHash": "db1b4a6101f92b926e740bd839a3667d72be49223de7a955683dd06eafba9de6"
+    },
+    "csharp-xml-comments": {
+      "source": "/Users/alexbello/Git/agents",
+      "sourceType": "local",
+      "computedHash": "77fa031f9240c6bc039ae74a8e30b928e51a6239147e8748ecd02646e6f71894"
+    },
+    "skill-authoring": {
+      "source": "/Users/alexbello/Git/agents",
+      "sourceType": "local",
+      "computedHash": "ee5bff44bd76b43eef6f9dc477090e6e6f30a1006a0ed6b40afcbff15f416065"
+    },
+    "source-control": {
+      "source": "/Users/alexbello/Git/agents",
+      "sourceType": "local",
+      "computedHash": "f118e18da54bfe2830942136fe0ddf4bb8b16d2888c4d0f61a358368b7be4def"
+    },
+    "thin-slice": {
+      "source": "/Users/alexbello/Git/agents",
+      "sourceType": "local",
+      "computedHash": "45ee66014e56add77305879ce41a9a25f663de18876bc82377f7d171661e5bfc"
+    },
+    "thin-slice-planning": {
+      "source": "/Users/alexbello/Git/agents",
+      "sourceType": "local",
+      "computedHash": "0688dbf9bfccf42d188c3127a04f6c79d69900479d8845b344e66d92d2b00b10"
+    }
+  }
+}

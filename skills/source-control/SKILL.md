@@ -1,6 +1,6 @@
 ---
 name: source-control
-description: Use one deterministic command interface for routine Forgejo and GitHub repository, issue, and pull-request operations through tea or gh. Use when an agent needs to inspect repository state, list or view issues and pull requests, read comments or diffs, check CI, create an issue or pull request, comment, or check out a pull request.
+description: Use one deterministic command interface for routine Forgejo and GitHub repository, issue, and pull-request operations through tea or gh. Use when an agent needs to inspect repository state, list or view issues and pull requests, read comments or diffs, check CI, create or edit an issue or pull request, comment, or check out a pull request.
 ---
 
 # Source control

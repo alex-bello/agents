@@ -27,6 +27,7 @@ Global options must precede the resource:
 | `issue view` | `NUMBER` | none |
 | `issue comments` | `NUMBER` | none |
 | `issue create` | `--title TEXT`, `--body-file PATH` | repeated `--label NAME` |
+| `issue edit` | `NUMBER`, `--body-file PATH` | none |
 | `issue comment` | `NUMBER`, `--body-file PATH` | none |
 | `pr list` | none | `--state open\|closed\|all` |
 | `pr view` | `NUMBER` | none |
@@ -37,7 +38,7 @@ Global options must precede the resource:
 | `pr comment` | `NUMBER`, `--body-file PATH` | none |
 | `pr checkout` | `NUMBER` | none |
 
-Create and comment commands are externally visible writes. Checkout changes the
+Create, edit, and comment commands are externally visible writes. Checkout changes the
 local worktree. Use them only when the user's request authorizes the effect.
 
 ## Output

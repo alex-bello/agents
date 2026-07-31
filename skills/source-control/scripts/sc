@@ -253,6 +253,14 @@ function github(operation, args, options) {
     emit({ provider: "github", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
     return;
   }
+  if (operation === "issue.edit") {
+    const parsed = parseOptions(args, { "body-file": "value" });
+    const number = requireValue(parsed._[0], "issue number");
+    requireFile(parsed["body-file"], "--body-file");
+    const result = run("gh", ["issue", "edit", number, "--body-file", parsed["body-file"], ...scoped]);
+    emit({ provider: "github", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
+    return;
+  }
   if (operation === "issue.comment" || operation === "pr.comment") {
     const parsed = parseOptions(args, { "body-file": "value" });
     const number = requireValue(parsed._[0], `${operation.split(".")[0]} number`);
@@ -391,6 +399,14 @@ function forgejo(operation, args, options) {
     emit({ provider: "forgejo", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
     return;
   }
+  if (operation === "issue.edit") {
+    const parsed = parseOptions(args, { "body-file": "value" });
+    const number = requireValue(parsed._[0], "issue number");
+    const body = requireFile(parsed["body-file"], "--body-file");
+    const result = run("tea", ["issues", "edit", number, "--description", body, ...scoped]);
+    emit({ provider: "forgejo", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
+    return;
+  }
   if (operation === "issue.comment" || operation === "pr.comment") {
     const parsed = parseOptions(args, { "body-file": "value" });
     const number = requireValue(parsed._[0], `${operation.split(".")[0]} number`);
@@ -457,6 +473,7 @@ if (resource === "capabilities") {
       "issue.view": true,
       "issue.comments": true,
       "issue.create": true,
+      "issue.edit": true,
       "issue.comment": true,
       "pr.list": true,
       "pr.view": true,

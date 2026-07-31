@@ -127,6 +127,39 @@ test("rejects missing body files before invoking a write", async (t) => {
   assert.match(result.stderr, /file not found/);
 });
 
+test("edits a GitHub issue body from a file", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'test "$1 $2 $3 $4" = "issue edit 7 --body-file" && test -f "$5" && printf "https://github.com/owner/project/issues/7\\n"',
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Updated body");
+  const result = invoke(directory, ["issue", "edit", "7", "--body-file", bodyFile]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "github", operation: "issue.edit", repository: "owner/project", number: 7,
+    success: true, url: "https://github.com/owner/project/issues/7",
+  });
+});
+
+test("edits a Forgejo issue body from a file", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2 $3" = "issues edit 9" ] && [ "$4" = "--description" ] && [ "$5" = "Updated body" ]; then printf '%s\\n' 'https://forge.example/owner/project/issues/9';
+else exit 99; fi`,
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Updated body");
+  const result = invoke(directory, ["issue", "edit", "9", "--body-file", bodyFile]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "forgejo", operation: "issue.edit", repository: "owner/project", number: 9,
+    success: true, url: "https://forge.example/owner/project/issues/9",
+  });
+});
+
 test("strips terminal hyperlink controls from created URLs", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "git@github.com:owner/project.git"',
