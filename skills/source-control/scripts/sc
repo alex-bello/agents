@@ -208,6 +208,21 @@ function urlFromOutput(text) {
 function github(operation, args, options) {
   const repo = repository(options);
   const scoped = repoArgs("github", options);
+  if (operation === "label.list") {
+    const data = parseJson(run("gh", ["label", "list", "--limit", String(options.limit), "--json", "name,color,description", ...scoped]).stdout, operation);
+    emit({ provider: "github", operation, repository: repo, items: data.map((item) => ({ name: item.name ?? null, color: item.color ?? null, description: item.description ?? null })) });
+    return;
+  }
+  if (operation === "label.create") {
+    const parsed = parseOptions(args, { name: "value", color: "value", description: "value" });
+    requireValue(parsed.name, "--name");
+    const native = ["label", "create", parsed.name, ...scoped];
+    if (parsed.color) native.push("--color", parsed.color);
+    if (parsed.description) native.push("--description", parsed.description);
+    const result = run("gh", native);
+    emit({ provider: "github", operation, repository: repo, name: parsed.name, success: true, output: result.stdout.trim() });
+    return;
+  }
   if (operation === "auth.status") {
     const result = run("gh", ["auth", "status", "--active"], { allowFailure: true });
     emit({ provider: "github", operation, repository: repo, authenticated: result.status === 0 });
@@ -336,6 +351,21 @@ function github(operation, args, options) {
 function forgejo(operation, args, options) {
   const repo = repository(options);
   const scoped = repoArgs("forgejo", options);
+  if (operation === "label.list") {
+    const data = parseJson(run("tea", ["labels", "list", "--limit", String(options.limit), "--output", "json", ...scoped]).stdout, operation);
+    emit({ provider: "forgejo", operation, repository: repo, items: data.map((item) => ({ name: item.name ?? null, color: item.color ?? null, description: item.description ?? null })) });
+    return;
+  }
+  if (operation === "label.create") {
+    const parsed = parseOptions(args, { name: "value", color: "value", description: "value" });
+    requireValue(parsed.name, "--name");
+    const native = ["labels", "create", "--name", parsed.name, ...scoped];
+    if (parsed.color) native.push("--color", parsed.color);
+    if (parsed.description) native.push("--description", parsed.description);
+    const result = run("tea", native);
+    emit({ provider: "forgejo", operation, repository: repo, name: parsed.name, success: true, output: result.stdout.trim() });
+    return;
+  }
   if (operation === "auth.status") {
     const result = run("tea", ["whoami"], { allowFailure: true });
     emit({ provider: "forgejo", operation, repository: repo, authenticated: result.status === 0 });
@@ -469,6 +499,8 @@ if (resource === "capabilities") {
     repository: repo,
     capabilities: {
       "repo.view": true,
+      "label.list": true,
+      "label.create": true,
       "issue.list": true,
       "issue.view": true,
       "issue.comments": true,
@@ -493,7 +525,7 @@ if (resource === "capabilities") {
 
 const action = rest[1];
 if (!action) fail(EXIT.usage, `an action is required for ${resource}`);
-if (!["auth", "repo", "issue", "pr"].includes(resource)) {
+if (!["auth", "repo", "label", "issue", "pr"].includes(resource)) {
   fail(EXIT.unsupported, `unsupported resource: ${resource}`);
 }
 const operation = `${resource}.${action}`;

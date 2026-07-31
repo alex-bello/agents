@@ -66,6 +66,23 @@ test("normalizes a GitHub issue list", async (t) => {
   });
 });
 
+test("lists and creates Forgejo labels", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' '[{"name":"thin-slice","color":"2563EB","description":"Lifecycle work"}]';
+elif [ "$1 $2" = "labels create" ]; then printf '%s\\n' 'created';
+else exit 99; fi`,
+  });
+  const listed = invoke(directory, ["label", "list"]);
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.deepEqual(JSON.parse(listed.stdout).items, [{ name: "thin-slice", color: "2563EB", description: "Lifecycle work" }]);
+  const created = invoke(directory, ["label", "create", "--name", "wayfinder", "--color", "7C3AED"]);
+  assert.equal(created.status, 0, created.stderr);
+  assert.deepEqual(JSON.parse(created.stdout), { provider: "forgejo", operation: "label.create", repository: "owner/project", name: "wayfinder", success: true, output: "created" });
+});
+
 test("detects a configured Forgejo host and normalizes issues", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',

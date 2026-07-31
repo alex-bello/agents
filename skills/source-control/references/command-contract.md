@@ -23,6 +23,8 @@ Global options must precede the resource:
 | `capabilities` | none | none |
 | `auth status` | none | none |
 | `repo view` | none | none |
+| `label list` | none | none |
+| `label create` | `--name TEXT` | `--color HEX`, `--description TEXT` |
 | `issue list` | none | `--state open\|closed\|all`, repeated `--label NAME` |
 | `issue view` | `NUMBER` | none |
 | `issue comments` | `NUMBER` | none |
