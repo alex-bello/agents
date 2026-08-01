@@ -8,13 +8,13 @@ The v1 contract targets behavior confirmed for `tea` 0.14 and `gh` 2.96.
 | Authentication status | yes | yes |
 | Repository view | yes | yes |
 | Issue list/view/comments | yes | yes |
-| Issue create/edit/comment | yes | yes |
+| Issue create/edit/close/comment | yes | yes |
 | Pull-request list/view/comments | yes | yes |
 | Pull-request diff | yes | yes |
 | Pull-request checks | from pull `ci` data | `pr checks` |
 | Pull-request create/comment | yes | yes |
 | Pull-request checkout | yes | yes |
-| Merge/close/delete/release | intentionally unsupported | intentionally unsupported |
+| Pull-request merge/close; issue delete; release | intentionally unsupported | intentionally unsupported |
 | Review-thread mutation | intentionally unsupported | intentionally unsupported |
 
 `pr checks` cannot provide perfectly identical detail: GitHub exposes individual

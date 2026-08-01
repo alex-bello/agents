@@ -30,6 +30,7 @@ Global options must precede the resource:
 | `issue comments` | `NUMBER` | none |
 | `issue create` | `--title TEXT`, `--body-file PATH` | repeated `--label NAME` |
 | `issue edit` | `NUMBER`, `--body-file PATH` | none |
+| `issue close` | `NUMBER` | none |
 | `issue comment` | `NUMBER`, `--body-file PATH` | none |
 | `pr list` | none | `--state open\|closed\|all` |
 | `pr view` | `NUMBER` | none |
@@ -40,8 +41,9 @@ Global options must precede the resource:
 | `pr comment` | `NUMBER`, `--body-file PATH` | none |
 | `pr checkout` | `NUMBER` | none |
 
-Create, edit, and comment commands are externally visible writes. Checkout changes the
-local worktree. Use them only when the user's request authorizes the effect.
+Create, edit, close, and comment commands are externally visible writes. Checkout
+changes the local worktree. Use them only when the user's request authorizes the
+effect.
 
 ## Output
 
@@ -61,8 +63,9 @@ Common item fields are `number`, `title`, `body`, `state`, `author`, `url`,
 `null` or omitted. Provider-specific response objects are not exposed.
 
 `pr diff` is JSON with a `diff` string. `auth status` contains
-`authenticated`. Create and comment operations contain `success` and, when the
-native CLI returns one, `url`.
+`authenticated`. Create, edit, and comment operations contain `success` and,
+when the native CLI returns one, `url`. Issue close contains `number` and
+`success`.
 
 ## Exit codes
 

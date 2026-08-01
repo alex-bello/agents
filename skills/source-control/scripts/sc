@@ -208,6 +208,12 @@ function urlFromOutput(text) {
 function github(operation, args, options) {
   const repo = repository(options);
   const scoped = repoArgs("github", options);
+  if (operation === "branch.checkout") {
+    const name = requireValue(args[0], "branch name");
+    run("git", ["switch", name]);
+    emit({ provider: "github", operation, repository: repo, name, success: true });
+    return;
+  }
   if (operation === "label.list") {
     const data = parseJson(run("gh", ["label", "list", "--limit", String(options.limit), "--json", "name,color,description", ...scoped]).stdout, operation);
     emit({ provider: "github", operation, repository: repo, items: data.map((item) => ({ name: item.name ?? null, color: item.color ?? null, description: item.description ?? null })) });
@@ -273,6 +279,12 @@ function github(operation, args, options) {
     const number = requireValue(parsed._[0], "issue number");
     requireFile(parsed["body-file"], "--body-file");
     const result = run("gh", ["issue", "edit", number, "--body-file", parsed["body-file"], ...scoped]);
+    emit({ provider: "github", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
+    return;
+  }
+  if (operation === "issue.close") {
+    const number = requireValue(args[0], "issue number");
+    const result = run("gh", ["issue", "close", number, ...scoped]);
     emit({ provider: "github", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
     return;
   }
@@ -351,6 +363,21 @@ function github(operation, args, options) {
 function forgejo(operation, args, options) {
   const repo = repository(options);
   const scoped = repoArgs("forgejo", options);
+  if (operation === "branch.create") {
+    const parsed = parseOptions(args, { name: "value", from: "value" });
+    requireValue(parsed.name, "--name");
+    const native = ["branch", "create", parsed.name, ...scoped];
+    if (parsed.from) native.push("--from", parsed.from);
+    const result = run("tea", native);
+    emit({ provider: "forgejo", operation, repository: repo, name: parsed.name, success: true, output: result.stdout.trim() });
+    return;
+  }
+  if (operation === "branch.checkout") {
+    const name = requireValue(args[0], "branch name");
+    run("git", ["switch", name]);
+    emit({ provider: "forgejo", operation, repository: repo, name, success: true });
+    return;
+  }
   if (operation === "label.list") {
     const data = parseJson(run("tea", ["labels", "list", "--limit", String(options.limit), "--output", "json", ...scoped]).stdout, operation);
     emit({ provider: "forgejo", operation, repository: repo, items: data.map((item) => ({ name: item.name ?? null, color: item.color ?? null, description: item.description ?? null })) });
@@ -437,6 +464,12 @@ function forgejo(operation, args, options) {
     emit({ provider: "forgejo", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
     return;
   }
+  if (operation === "issue.close") {
+    const number = requireValue(args[0], "issue number");
+    const result = run("tea", ["issues", "close", number, ...scoped]);
+    emit({ provider: "forgejo", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
+    return;
+  }
   if (operation === "issue.comment" || operation === "pr.comment") {
     const parsed = parseOptions(args, { "body-file": "value" });
     const number = requireValue(parsed._[0], `${operation.split(".")[0]} number`);
@@ -499,6 +532,8 @@ if (resource === "capabilities") {
     repository: repo,
     capabilities: {
       "repo.view": true,
+      "branch.create": provider === "forgejo",
+      "branch.checkout": true,
       "label.list": true,
       "label.create": true,
       "issue.list": true,
@@ -506,6 +541,7 @@ if (resource === "capabilities") {
       "issue.comments": true,
       "issue.create": true,
       "issue.edit": true,
+      "issue.close": true,
       "issue.comment": true,
       "pr.list": true,
       "pr.view": true,

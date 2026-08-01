@@ -188,3 +188,32 @@ test("strips terminal hyperlink controls from created URLs", async (t) => {
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).url, "https://github.com/owner/project/issues/12");
 });
+
+test("closes a GitHub issue", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'test "$1 $2 $3" = "issue close 42"',
+  });
+  const result = invoke(directory, ["issue", "close", "42"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "github", operation: "issue.close", repository: "owner/project", number: 42,
+    success: true, url: null,
+  });
+});
+
+test("closes a Forgejo issue", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2 $3" = "issues close 9" ]; then exit 0;
+else exit 99; fi`,
+  });
+  const result = invoke(directory, ["issue", "close", "9"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "forgejo", operation: "issue.close", repository: "owner/project", number: 9,
+    success: true, url: null,
+  });
+});

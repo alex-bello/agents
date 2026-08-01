@@ -27,6 +27,12 @@ scripts/sc issue create \
   --label documentation
 ```
 
+Close an issue after confirming the requested external change:
+
+```sh
+scripts/sc issue close 42
+```
+
 Inspect a pull request:
 
 ```sh

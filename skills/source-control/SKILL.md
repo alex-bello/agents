@@ -1,6 +1,6 @@
 ---
 name: source-control
-description: Use one deterministic command interface for routine Forgejo and GitHub repository, issue, and pull-request operations through tea or gh. Use when an agent needs to inspect repository state, list or view issues and pull requests, read comments or diffs, check CI, create or edit an issue or pull request, comment, or check out a pull request.
+description: Use one deterministic command interface for routine Forgejo and GitHub repository, issue, and pull-request operations through tea or gh. Use when an agent needs to inspect repository state, list or view issues and pull requests, read comments or diffs, check CI, create, edit, or close an issue or pull request, comment, or check out a pull request.
 ---
 
 # Source control
@@ -32,12 +32,16 @@ noninteractively, and returns normalized JSON.
   interactive input.
 - Pass `--repo OWNER/NAME` when the target is not the current repository.
 - Pass `--provider forgejo|github` when automatic detection is ambiguous.
-- Treat `issue create`, `issue comment`, `pr create`, and `pr comment` as
+- Treat `issue create`, `issue close`, `issue comment`, `pr create`, and `pr comment` as
   externally visible writes.
-- Do not merge, close, delete, release, approve, reject, or resolve review
-  threads with this skill. Those operations are outside the v1 contract.
+- Do not merge pull requests, delete, release, approve, reject, or resolve
+  review threads with this skill. Those operations are outside the v1 contract.
 
 ## Verification
+
+Branch setup uses `branch create` where the provider supports it and
+`branch checkout` locally. Pull-request creation and checkout use the existing
+`pr` operations.
 
 Every successful command writes one JSON object to stdout. Verify that:
 

@@ -40,8 +40,11 @@ the target application's agent format.
 ├── scripts/
 │   └── validate.mjs         # Repository validation
 ├── skills/
-│   └── skill-authoring/
-│       └── SKILL.md         # One installable skill per directory
+│   └── thin-slice/
+│       ├── SKILL.md         # Core thin-slice workflow
+│       └── wayfinder/
+│           ├── SKILL.md     # Idea refinement workflow
+│           └── agents/       # Optional UI metadata
 └── package.json
 ```
 
@@ -65,7 +68,8 @@ credentials.
 
 ## Add a skill
 
-1. Create `skills/<skill-name>/SKILL.md`.
+1. Create `skills/<skill-name>/SKILL.md`, or place related skills under an
+   existing lifecycle directory such as `skills/thin-slice/<skill-name>/`.
 2. Use a lowercase, hyphenated name that matches the directory.
 3. Write a specific description that explains both capability and trigger.
 4. Put detailed workflow instructions in the body.

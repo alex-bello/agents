@@ -7,16 +7,14 @@ const skillsRoot = path.join(root, "skills");
 const errors = [];
 const names = new Map();
 
-async function skillFiles(directory, depth = 0) {
+async function skillFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
 
   for (const entry of entries) {
     const entryPath = path.join(directory, entry.name);
     if (entry.isFile() && entry.name === "SKILL.md") files.push(entryPath);
-    if (entry.isDirectory() && depth < 1) {
-      files.push(...(await skillFiles(entryPath, depth + 1)));
-    }
+    if (entry.isDirectory()) files.push(...(await skillFiles(entryPath)));
   }
 
   return files;

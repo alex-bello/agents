@@ -6,14 +6,6 @@
   "description": "Reusable engineering skills maintained by Alex Bello.",
   "plugins": [
     {
-      "name": ".NET-skills",
-      "source": "./",
-      "description": "Skills for .NET and C# projects.",
-      "skills": [
-        "./skills/csharp-xml-comments"
-      ]
-    },
-    {
       "name": "engineering-skills",
       "source": "./",
       "description": "Skills for creating and maintaining documentation.",
@@ -21,7 +13,9 @@
         "./skills/bump-version",
         "./skills/skill-authoring",
         "./skills/source-control",
-        "./skills/thin-slice"
+        "./skills/thin-slice",
+        "./skills/thin-slice/setup-thin-slice",
+        "./skills/thin-slice/wayfinder"
       ]
     }
   ]
