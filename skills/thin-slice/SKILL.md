@@ -30,6 +30,10 @@ Choose one mode from the request:
 4. **Record discovery** — append newly identified work to the source group by
    commenting on the tracker issue. Do not silently rewrite the original plan.
 
+Implementation is handled by the independently callable
+`thin-slice-implement` skill. It accepts one explicit issue or one issue found
+by the configured ready label, and processes exactly one issue per invocation.
+
 If the user asks to “track this” without specifying a repository or issue,
 prepare the tracker body and ask for confirmation before creating it.
 
@@ -171,7 +175,9 @@ requested group or exact checkbox unambiguously, and show the proposed issue
 titles, labels, and count. A single item produces one issue; a feature group
 produces one issue per unchecked item in its original order. Each child body
 must preserve the smallest reasonable human-verifiable increment and include
-its acceptance check. Do not generate children from subtasks that cannot stand
+an implementation contract with Objective, Context, Scope, Detailed behavior,
+Acceptance criteria, Verification, Non-goals, Dependencies, Risks and
+exceptions, and Rollback notes. Do not generate children from subtasks that cannot stand
 alone, and do not merge independent behaviors just to reduce the issue count.
 It must include:
 
@@ -185,11 +191,12 @@ Source item: `- [ ] ...`
 - ...
 
 <!-- thin-slice-work-item
-schema: 1
+schema: 2
 kind: work-item
 source-tracker: 123
 feature-group: group-slug
 source-item: item-slug
+depends-on: []
 -->
 ```
 
@@ -235,6 +242,12 @@ inferred from existing issue labels. Prefer this vocabulary:
 - `thin-slice-tracker` — the single source tracker.
 - `thin-slice-work-item` — a derived implementation issue.
 - `thin-slice-discovery` — a comment-created addition awaiting triage.
+- `thin-slice-review` — an issue awaiting human review.
+- `thin-slice-ready` — approved and eligible for implementation.
+- `thin-slice-in-progress` — currently being implemented or awaiting PR merge.
+- `thin-slice-implemented` — its implementation PR has merged.
+- `thin-slice-blocked` — implementation cannot safely proceed.
+- `thin-slice-needs-discovery` — requirements need clarification or refinement.
 - `thin-slice-group:<slug>` — optional group filter, only if pre-created.
 
 Before initialization, list existing issues or otherwise inspect available

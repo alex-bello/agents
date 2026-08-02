@@ -40,9 +40,15 @@ branch:
 implementation:
   create_branch: true
   commit_reference_required: true
+  ready_label: thin-slice-ready
+  in_progress_label: thin-slice-in-progress
+  implemented_label: thin-slice-implemented
+  blocked_label: thin-slice-blocked
+  needs_discovery_label: thin-slice-needs-discovery
+  automatic_lifecycle: false
 pull_request:
   creation: ask
-  close_work_item_on_merge: true
+  close_work_item_on_merge: false
 verification:
   require_tests: true
   require_acceptance_checks: true
