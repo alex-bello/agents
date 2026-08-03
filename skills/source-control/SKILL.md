@@ -1,13 +1,19 @@
 ---
 name: source-control
-description: Use one deterministic command interface for routine Forgejo and GitHub repository, issue, and pull-request operations through tea or gh. Use when an agent needs to inspect repository state, list or view issues and pull requests, read comments or diffs, check CI, create, edit, or close an issue or pull request, comment, or check out a pull request.
+description: Use Git for local source-control operations and one deterministic command interface for Forgejo and GitHub repository, issue, and pull-request operations. Use when an agent needs to inspect repository state, manage branches, list or view issues and pull requests, read comments or diffs, check CI, create, edit, or close an issue or pull request, comment, or check out a pull request.
 ---
 
 # Source control
 
-Use `scripts/sc` instead of constructing `tea`, `gh`, or HTTP API commands.
+Use native `git` for operations built into Git. Use `scripts/sc` instead of
+constructing `tea`, `gh`, or HTTP API commands for provider-level operations.
 The wrapper detects Forgejo or GitHub, calls the corresponding CLI
 noninteractively, and returns normalized JSON.
+
+Git-native operations include status, diff, log, show, remotes, fetch, pull,
+push, branch creation/listing, switch/checkout, add, commit, merge, rebase,
+and tags. `scripts/sc` is for provider metadata and collaboration operations
+such as issues, labels, pull requests, checks, and comments.
 
 ## Workflow
 
@@ -26,8 +32,8 @@ noninteractively, and returns normalized JSON.
 ## Rules
 
 - Do not call `tea api`, `gh api`, `curl`, or provider MCP tools as a fallback.
-- Do not improvise a native CLI command when `scripts/sc` reports an unsupported
-  operation. Explain the missing capability instead.
+- Do not improvise a provider CLI command when `scripts/sc` reports an
+  unsupported operation. Explain the missing capability instead.
 - Prefer `--body-file` over inline bodies. The wrapper intentionally rejects
   interactive input.
 - Pass `--repo OWNER/NAME` when the target is not the current repository.
@@ -39,9 +45,10 @@ noninteractively, and returns normalized JSON.
 
 ## Verification
 
-Branch setup uses `branch create` where the provider supports it and
-`branch checkout` locally. Pull-request creation and checkout use the existing
-`pr` operations.
+Use Git to create and switch local branches, then push them with Git before
+using `scripts/sc pr create`. Pull-request checkout uses the existing
+`pr checkout` operation because it
+also fetches provider-hosted pull-request state.
 
 Every successful command writes one JSON object to stdout. Verify that:
 

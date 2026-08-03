@@ -1,6 +1,6 @@
 # Command contract
 
-Run commands as:
+Run provider commands as:
 
 ```sh
 scripts/sc [global options] <resource> <action> [arguments]
@@ -35,6 +35,7 @@ Global options must precede the resource:
 | `pr list` | none | `--state open\|closed\|all` |
 | `pr view` | `NUMBER` | none |
 | `pr comments` | `NUMBER` | none |
+| `pr edit` | `NUMBER`, `--body-file PATH` | none |
 | `pr diff` | `NUMBER` | none |
 | `pr checks` | `NUMBER` | none |
 | `pr create` | `--base BRANCH`, `--head BRANCH`, `--title TEXT`, `--body-file PATH` | `--draft`, repeated `--label NAME` |

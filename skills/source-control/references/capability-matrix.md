@@ -7,9 +7,11 @@ The v1 contract targets behavior confirmed for `tea` 0.14 and `gh` 2.96.
 | Detect provider from Git remote | yes | yes |
 | Authentication status | yes | yes |
 | Repository view | yes | yes |
+| Local branch creation, switching, fetch, and push | Git-native | Git-native |
 | Issue list/view/comments | yes | yes |
 | Issue create/edit/close/comment | yes | yes |
 | Pull-request list/view/comments | yes | yes |
+| Pull-request edit | yes | yes |
 | Pull-request diff | yes | yes |
 | Pull-request checks | from pull `ci` data | `pr checks` |
 | Pull-request create/comment | yes | yes |

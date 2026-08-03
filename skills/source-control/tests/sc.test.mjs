@@ -177,6 +177,24 @@ else exit 99; fi`,
   });
 });
 
+test("edits a Forgejo pull-request body from a file", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2 $3" = "pulls edit 18" ] && [ "$4" = "--description" ] && [ "$5" = "Updated body" ]; then printf '%s\\n' 'https://forge.example/owner/project/pulls/18';
+else exit 99; fi`,
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Updated body");
+  const result = invoke(directory, ["pr", "edit", "18", "--body-file", bodyFile]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "forgejo", operation: "pr.edit", repository: "owner/project", number: 18,
+    success: true, url: "https://forge.example/owner/project/pulls/18",
+  });
+});
+
 test("strips terminal hyperlink controls from created URLs", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "git@github.com:owner/project.git"',

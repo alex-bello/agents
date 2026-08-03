@@ -18,6 +18,13 @@ List labeled work consistently on either provider:
 scripts/sc --limit 50 issue list --state open --label "help wanted"
 ```
 
+Create and publish a local branch with Git:
+
+```sh
+git switch -c codex/feature
+git push -u origin codex/feature
+```
+
 Create an issue from prepared text:
 
 ```sh
