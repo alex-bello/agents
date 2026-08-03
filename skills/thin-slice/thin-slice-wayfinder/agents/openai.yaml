@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wayfinder"
+  short_description: "Refine ideas into issue-backed specs"
+  default_prompt: "Use $thin-slice-wayfinder to refine this idea into a complete specification and repository issue."

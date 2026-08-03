@@ -14,22 +14,37 @@
     "skill-authoring": {
       "source": "/Users/alexbello/Git/agents",
       "sourceType": "local",
-      "computedHash": "ee5bff44bd76b43eef6f9dc477090e6e6f30a1006a0ed6b40afcbff15f416065"
+      "computedHash": "f4f29d2a73da884f877f97dcaadbab63023c66a9e062a77be83646adba15fdd0"
     },
     "source-control": {
       "source": "/Users/alexbello/Git/agents",
       "sourceType": "local",
-      "computedHash": "f118e18da54bfe2830942136fe0ddf4bb8b16d2888c4d0f61a358368b7be4def"
+      "computedHash": "d3fd060beeafefde1447f1f61c394c75b70e56feebcba61b856fb6b260456a27"
     },
     "thin-slice": {
       "source": "/Users/alexbello/Git/agents",
       "sourceType": "local",
-      "computedHash": "45ee66014e56add77305879ce41a9a25f663de18876bc82377f7d171661e5bfc"
+      "computedHash": "80a07339a10f2343bb352f03786c348a4ba8da8d763d1412e0a9554a8cb5ac6a"
     },
-    "thin-slice-planning": {
+    "thin-slice-implement": {
       "source": "/Users/alexbello/Git/agents",
       "sourceType": "local",
-      "computedHash": "0688dbf9bfccf42d188c3127a04f6c79d69900479d8845b344e66d92d2b00b10"
+      "computedHash": "3bf25e3784c2c63b51b8a991f709d058f07509faa8134f58908f7612991c5908"
+    },
+    "thin-slice-setup": {
+      "source": "/Users/alexbello/Git/agents",
+      "sourceType": "local",
+      "computedHash": "217a4b26e51ada699b515b1b67746799fbc863eee884b441e9c6ec4ca6ec8052"
+    },
+    "thin-slice-wayfinder": {
+      "source": "/Users/alexbello/Git/agents",
+      "sourceType": "local",
+      "computedHash": "23ae78c22026c11dafa6014324423a2c2af80b9afb3612bc178cb77f6e151e66"
+    },
+    "thin-slice-wayfinder": {
+      "source": "/Users/alexbello/Git/agents",
+      "sourceType": "local",
+      "computedHash": "23ae78c22026c11dafa6014324423a2c2af80b9afb3612bc178cb77f6e151e66"
     }
   }
 }

@@ -1,9 +1,9 @@
 ---
-name: setup-thin-slice
+name: thin-slice-setup
 description: Inspect a repository and prepare its thin-slice lifecycle configuration, label plan, setup branch, and pull request after explicit confirmation.
 ---
 
-# Setup Thin Slice
+# Thin-Slice Setup
 
 Initialize the repository foundation required by the thin-slice lifecycle.
 Do not install dependencies, enable CI, modify the default branch, or create

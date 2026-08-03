@@ -11,12 +11,13 @@
       "description": "Skills for building and maintaining applications.",
       "skills": [
         "./skills/bump-version",
+        "./skills/csharp-xml-comments",
         "./skills/skill-authoring",
         "./skills/source-control",
-        "./skills/thin-slice",
-        "./skills/thin-slice/setup-thin-slice",
+        "./skills/thin-slice/thin-slice",
         "./skills/thin-slice/thin-slice-implement",
-        "./skills/thin-slice/wayfinder"
+        "./skills/thin-slice/thin-slice-setup",
+        "./skills/thin-slice/thin-slice-wayfinder"
       ]
     }
   ]

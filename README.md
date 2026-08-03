@@ -7,25 +7,25 @@ A Git-backed library of reusable Agent Skills and custom agent definitions.
 List the skills available in this repository:
 
 ```sh
-npx skills@latest add https://git.dageniusal.top/operator/agents.git --list
+pnpm dlx skills@latest add https://git.dageniusal.top/operator/agents.git --list
 ```
 
 Install a skill interactively:
 
 ```sh
-npx skills@latest add https://git.dageniusal.top/operator/agents.git
+pnpm dlx skills@latest add https://git.dageniusal.top/operator/agents.git
 ```
 
 Install every skill for every detected agent:
 
 ```sh
-npx skills@latest add https://git.dageniusal.top/operator/agents.git --all
+pnpm dlx skills@latest add https://git.dageniusal.top/operator/agents.git --all
 ```
 
 You can also install from a local checkout while developing:
 
 ```sh
-npx skills@latest add . --list
+pnpm dlx skills@latest add . --list
 ```
 
 The `skills` CLI installs the contents of `skills/`. Custom definitions in
@@ -41,10 +41,10 @@ the target application's agent format.
 │   └── validate.mjs         # Repository validation
 ├── skills/
 │   └── thin-slice/
-│       ├── SKILL.md         # Core thin-slice workflow
-│       ├── setup-thin-slice/ # Repository lifecycle setup
+│       ├── thin-slice/      # Core thin-slice workflow
+│       ├── thin-slice-setup/ # Repository lifecycle setup
 │       ├── thin-slice-implement/ # Work-item implementation workflow
-│       └── wayfinder/
+│       └── thin-slice-wayfinder/
 │           ├── SKILL.md     # Idea refinement workflow
 │           └── agents/       # Optional UI metadata
 └── package.json
@@ -75,8 +75,8 @@ credentials.
 2. Use a lowercase, hyphenated name that matches the directory.
 3. Write a specific description that explains both capability and trigger.
 4. Put detailed workflow instructions in the body.
-5. Run `npm test`.
-6. Confirm discovery with `npx skills@latest add . --list`.
+5. Run `pnpm test`.
+6. Confirm discovery with `pnpm dlx skills@latest add . --list`.
 
 ## Add an agent
 
@@ -87,7 +87,7 @@ in the same way as `SKILL.md`, so record the intended runtime in the file.
 ## Validation
 
 ```sh
-npm test
+pnpm test
 ```
 
 Validation checks skill discovery, required frontmatter, naming, duplicate

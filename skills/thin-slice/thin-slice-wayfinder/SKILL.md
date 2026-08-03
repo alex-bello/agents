@@ -1,5 +1,5 @@
 ---
-name: wayfinder
+name: thin-slice-wayfinder
 description: Lead an iterative product and engineering discovery conversation, then turn a fully refined idea into a detailed thin-slice specification saved as one repository issue. Use when a user has a rough software idea and wants gaps identified, decisions made, and implementation work organized before coding.
 ---
 
@@ -100,12 +100,12 @@ child issues as part of this skill; offer that later through `thin-slice`.
 Append this metadata block to the issue body:
 
 ```md
-<!-- wayfinder-spec
+<!-- thin-slice-wayfinder-spec
 schema: 1
 kind: specification
 status: refined
-source: wayfinder
-labels: [wayfinder, thin-slice]
+source: thin-slice-wayfinder
+labels: [thin-slice-wayfinder, thin-slice]
 -->
 ```
 

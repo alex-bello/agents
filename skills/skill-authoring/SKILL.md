@@ -6,7 +6,7 @@ description: Create or improve reusable Agent Skills in this repository when a w
 # Skill authoring
 
 Create focused, portable skills that follow the Agent Skills specification and
-can be discovered by `npx skills@latest`.
+can be discovered by `pnpm dlx skills@latest`.
 
 ## Workflow
 
@@ -14,7 +14,9 @@ can be discovered by `npx skills@latest`.
 2. Identify one concrete capability and the requests that should trigger it.
 3. Search existing directories under `skills/` to avoid overlapping behavior or
    duplicate names.
-4. Create `skills/<name>/SKILL.md`, where `<name>` is lowercase kebab-case.
+4. Create `skills/<name>/SKILL.md`, where `<name>` is lowercase kebab-case. If
+   grouping related skills, keep the group directory free of its own `SKILL.md`
+   so the installer does not copy nested skills twice.
 5. Add YAML frontmatter with a `name` matching the directory and a specific
    `description` explaining what the skill does and when to use it.
 6. Write imperative instructions in the body. Include inputs, workflow,
@@ -24,8 +26,8 @@ can be discovered by `npx skills@latest`.
    `examples/`. Reference only the files the agent needs.
 8. Keep secrets, credentials, personal paths, and application-specific state out
    of the skill.
-9. Run `npm test`.
-10. Run `npx skills@latest add . --list` and confirm the new skill is discovered.
+9. Run `pnpm test`.
+10. Run `pnpm dlx skills@latest add . --list` and confirm the new skill is discovered.
 
 ## Quality bar
 
