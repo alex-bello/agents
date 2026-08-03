@@ -8,13 +8,14 @@
     {
       "name": "engineering-skills",
       "source": "./",
-      "description": "Skills for creating and maintaining documentation.",
+      "description": "Skills for building and maintaining applications.",
       "skills": [
         "./skills/bump-version",
         "./skills/skill-authoring",
         "./skills/source-control",
         "./skills/thin-slice",
         "./skills/thin-slice/setup-thin-slice",
+        "./skills/thin-slice/thin-slice-implement",
         "./skills/thin-slice/wayfinder"
       ]
     }

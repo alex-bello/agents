@@ -42,6 +42,8 @@ the target application's agent format.
 ├── skills/
 │   └── thin-slice/
 │       ├── SKILL.md         # Core thin-slice workflow
+│       ├── setup-thin-slice/ # Repository lifecycle setup
+│       ├── thin-slice-implement/ # Work-item implementation workflow
 │       └── wayfinder/
 │           ├── SKILL.md     # Idea refinement workflow
 │           └── agents/       # Optional UI metadata
