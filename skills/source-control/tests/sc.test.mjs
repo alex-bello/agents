@@ -71,16 +71,29 @@ test("lists and creates Forgejo labels", async (t) => {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
     tea: `
 if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
-elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' '[{"name":"thin-slice","color":"2563EB","description":"Lifecycle work"}]';
+elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' '[{"id":17,"name":"thin-slice","color":"2563EB","description":"Lifecycle work"}]';
 elif [ "$1 $2" = "labels create" ]; then printf '%s\\n' 'created';
 else exit 99; fi`,
   });
   const listed = invoke(directory, ["label", "list"]);
   assert.equal(listed.status, 0, listed.stderr);
-  assert.deepEqual(JSON.parse(listed.stdout).items, [{ name: "thin-slice", color: "2563EB", description: "Lifecycle work" }]);
+  assert.deepEqual(JSON.parse(listed.stdout).items, [{ id: 17, name: "thin-slice", color: "2563EB", description: "Lifecycle work" }]);
   const created = invoke(directory, ["label", "create", "--name", "wayfinder", "--color", "7C3AED"]);
   assert.equal(created.status, 0, created.stderr);
   assert.deepEqual(JSON.parse(created.stdout), { provider: "forgejo", operation: "label.create", repository: "owner/project", name: "wayfinder", success: true, output: "created" });
+});
+
+test("normalizes GitHub label identifiers", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: `printf '%s\\n' '[{"id":"LA_kwDO","name":"bug","color":"B60205","description":"Defect"}]'`,
+  });
+  const result = invoke(directory, ["label", "list"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "github", operation: "label.list", repository: "owner/project",
+    items: [{ id: "LA_kwDO", name: "bug", color: "B60205", description: "Defect" }],
+  });
 });
 
 test("detects a configured Forgejo host and normalizes issues", async (t) => {

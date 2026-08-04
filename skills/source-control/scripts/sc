@@ -90,6 +90,15 @@ function normalizeComment(item) {
   };
 }
 
+function normalizeLabel(item) {
+  return {
+    id: item.id ?? item.index ?? null,
+    name: item.name ?? null,
+    color: item.color ?? null,
+    description: item.description ?? null,
+  };
+}
+
 function parseGlobal(argv) {
   const options = { provider: "auto", repo: null, remote: "origin", limit: 30 };
   let index = 0;
@@ -209,8 +218,8 @@ function github(operation, args, options) {
   const repo = repository(options);
   const scoped = repoArgs("github", options);
   if (operation === "label.list") {
-    const data = parseJson(run("gh", ["label", "list", "--limit", String(options.limit), "--json", "name,color,description", ...scoped]).stdout, operation);
-    emit({ provider: "github", operation, repository: repo, items: data.map((item) => ({ name: item.name ?? null, color: item.color ?? null, description: item.description ?? null })) });
+    const data = parseJson(run("gh", ["label", "list", "--limit", String(options.limit), "--json", "id,name,color,description", ...scoped]).stdout, operation);
+    emit({ provider: "github", operation, repository: repo, items: data.map(normalizeLabel) });
     return;
   }
   if (operation === "label.create") {
@@ -367,7 +376,7 @@ function forgejo(operation, args, options) {
   const scoped = repoArgs("forgejo", options);
   if (operation === "label.list") {
     const data = parseJson(run("tea", ["labels", "list", "--limit", String(options.limit), "--output", "json", ...scoped]).stdout, operation);
-    emit({ provider: "forgejo", operation, repository: repo, items: data.map((item) => ({ name: item.name ?? null, color: item.color ?? null, description: item.description ?? null })) });
+    emit({ provider: "forgejo", operation, repository: repo, items: data.map(normalizeLabel) });
     return;
   }
   if (operation === "label.create") {
