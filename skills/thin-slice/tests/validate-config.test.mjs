@@ -51,3 +51,38 @@ test("reports missing, incompatible, and unknown configuration", async (t) => {
   assert.match(result.stderr, /missing top-level section verification/);
   assert.match(result.stderr, /unknown top-level key extra/);
 });
+
+test("rejects malformed structure and unknown nested keys", async (t) => {
+  const result = await run(t, `schema: 1
+labels: mapped
+branch:
+    pattern: thin-slice/{issue-number}-{short-slug}
+implementation:
+  create_branch: yes
+  commit_reference_required: true
+  ready_label: ready
+  in_progress_label: progress
+  implemented_label: done
+  blocked_label: blocked
+  needs_discovery_label: discovery
+  automatic_lifecycle: false
+pull_request:
+  creation: ask
+  close_work_item_on_merge: false
+verification:
+  require_tests: true
+  require_acceptance_checks: true
+  require_manual_evidence_when_relevant: true
+  reject_unrelated_changes: false
+`);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /labels must be a mapping/);
+  assert.match(result.stderr, /nested keys must be indented by two spaces/);
+  assert.match(result.stderr, /implementation\.create_branch must be boolean/);
+});
+
+test("reports a missing configuration file clearly", () => {
+  const result = spawnSync(process.execPath, [validator, "/tmp/no-such-thin-slice-config.yml"], { encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /cannot read configuration/);
+});
