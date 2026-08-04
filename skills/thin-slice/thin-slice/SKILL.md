@@ -202,10 +202,10 @@ depends-on: []
 
 Apply the configured labels to every child. Default labels are
 `thin-slice` and `thin-slice-work-item`; add `thin-slice-group:<group-slug>`
-only when that label already exists. Never assume the skill can create labels:
-the `sc` v1 interface does not manage labels. If a requested label is absent
-or the provider rejects it, stop before creating any child and report the
-exact remediation.
+only when that label already exists. Setup may create explicitly approved
+labels through `sc label create`; implementation and planning must not create
+labels implicitly. If a requested label is absent or the provider rejects it,
+stop before creating any child and report the exact remediation.
 
 After successful creation, report every issue URL and number. The tracker
 body cannot be edited through the shared `sc` contract, so record the mapping
