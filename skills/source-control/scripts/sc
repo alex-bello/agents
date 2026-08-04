@@ -99,6 +99,16 @@ function normalizeLabel(item) {
   };
 }
 
+function normalizePullRequest(item) {
+  return {
+    ...normalizeItem(item),
+    base: scalar(item.base ?? item.baseRefName),
+    head: scalar(item.head ?? item.headRefName),
+    draft: item.draft ?? item.isDraft ?? /^WIP:/i.test(item.title ?? ""),
+    mergeable: item.mergeable ?? null,
+  };
+}
+
 function parseGlobal(argv) {
   const options = { provider: "auto", repo: null, remote: "origin", limit: 30 };
   let index = 0;
@@ -282,7 +292,7 @@ function github(operation, args, options) {
     const number = requireValue(parsed._[0], "issue number");
     requireFile(parsed["body-file"], "--body-file");
     const result = run("gh", ["issue", "edit", number, "--body-file", parsed["body-file"], ...scoped]);
-    emit({ provider: "github", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
+    emit({ provider: "github", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
     return;
   }
   if (operation === "pr.edit") {
@@ -311,8 +321,8 @@ function github(operation, args, options) {
   if (operation === "pr.list") {
     const parsed = parseOptions(args, { state: "value" });
     const data = parseJson(run("gh", ["pr", "list", "--limit", String(options.limit), "--state", parsed.state || "open",
-      "--json", "number,title,body,state,author,url,labels,createdAt,updatedAt", ...scoped]).stdout, operation);
-    emit({ provider: "github", operation, repository: repo, items: data.map(normalizeItem) });
+      "--json", "number,title,body,state,author,url,labels,createdAt,updatedAt,baseRefName,headRefName,isDraft,mergeable", ...scoped]).stdout, operation);
+    emit({ provider: "github", operation, repository: repo, items: data.map(normalizePullRequest) });
     return;
   }
   if (["pr.view", "pr.comments"].includes(operation)) {
@@ -324,10 +334,7 @@ function github(operation, args, options) {
     if (operation.endsWith("comments")) {
       emit({ provider: "github", operation, repository: repo, number: Number(number), items: (data.comments ?? []).map(normalizeComment) });
     } else {
-      emit({ provider: "github", operation, repository: repo, item: {
-        ...normalizeItem(data), base: data.baseRefName ?? null, head: data.headRefName ?? null,
-        draft: Boolean(data.isDraft), mergeable: data.mergeable ?? null,
-      } });
+      emit({ provider: "github", operation, repository: repo, item: normalizePullRequest(data) });
     }
     return;
   }
@@ -418,7 +425,7 @@ function forgejo(operation, args, options) {
       "--fields", fields, "--output", "json", ...scoped];
     if (parsed.label?.length) native.push("--labels", parsed.label.join(","));
     const data = parseJson(run("tea", native).stdout, operation);
-    emit({ provider: "forgejo", operation, repository: repo, items: data.map(normalizeItem) });
+    emit({ provider: "forgejo", operation, repository: repo, items: data.map(normalizePullRequest) });
     return;
   }
   if (["issue.view", "pr.view"].includes(operation)) {
@@ -429,11 +436,7 @@ function forgejo(operation, args, options) {
       : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable";
     const data = parseJson(run("tea", [entity, number, "--fields", fields, "--output", "json", ...scoped]).stdout, operation);
     const item = Array.isArray(data) ? data[0] : data;
-    emit({ provider: "forgejo", operation, repository: repo, item: {
-      ...normalizeItem(item), ...(entity === "pulls" ? {
-        base: scalar(item.base), head: scalar(item.head), draft: /^WIP:/i.test(item.title ?? ""), mergeable: item.mergeable ?? null,
-      } : {}),
-    } });
+    emit({ provider: "forgejo", operation, repository: repo, item: entity === "pulls" ? normalizePullRequest(item) : normalizeItem(item) });
     return;
   }
   if (operation === "issue.comments" || operation === "pr.comments") {
@@ -479,7 +482,7 @@ function forgejo(operation, args, options) {
     const number = requireValue(parsed._[0], `${operation.split(".")[0]} number`);
     const body = requireFile(parsed["body-file"], "--body-file");
     const result = run("tea", ["comments", "add", number, body, ...scoped]);
-    emit({ provider: "forgejo", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
+    emit({ provider: "forgejo", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
     return;
   }
   if (operation === "pr.diff" || operation === "pr.checks") {

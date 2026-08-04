@@ -66,6 +66,20 @@ test("normalizes a GitHub issue list", async (t) => {
   });
 });
 
+test("normalizes GitHub pull-request branch metadata", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: `printf '%s\\n' '[{"number":8,"title":"Feature","state":"OPEN","baseRefName":"main","headRefName":"codex/feature","isDraft":true,"mergeable":"MERGEABLE"}]'`,
+  });
+  const result = invoke(directory, ["pr", "list"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).items[0], {
+    number: 8, title: "Feature", body: null, state: "open", author: null, url: null,
+    labels: [], createdAt: null, updatedAt: null, base: "main", head: "codex/feature",
+    draft: true, mergeable: "MERGEABLE",
+  });
+});
+
 test("lists and creates Forgejo labels", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
