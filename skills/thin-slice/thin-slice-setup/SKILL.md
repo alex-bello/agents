@@ -20,6 +20,57 @@ labels without explicit confirmation.
    formatter, and CI configuration from the repository. Report anything
    missing; do not infer that a missing tool should be installed.
 
+### Inspection report
+
+Return one structured report before proposing any changes. Keep observations
+separate from prerequisites so an incomplete repository can still be set up
+deliberately. Use `detected`, `missing`, or `unavailable` for each check; an
+unavailable provider command is not evidence that the repository setting is
+missing.
+
+The report must contain these sections:
+
+```text
+repository
+  provider: detected | unavailable
+  repository: owner/name or unavailable
+  authenticated: yes | no | unavailable
+  default_branch: branch name or missing
+  current_branch: branch name
+labels
+  existing: names
+  required: names mapped to existing | proposed | missing
+conventions
+  branch_pattern: detected pattern | missing
+  test_command: command | missing
+  formatter: command | missing
+  ci: configuration paths/commands | missing
+capabilities
+  operation: available | unavailable (reason)
+prerequisites
+  blocking: actionable missing requirements
+  advisory: non-blocking observations
+```
+
+At minimum, inspect the provider and authentication status, repository metadata,
+labels, capabilities, the default branch, local branch names, package/project
+scripts, formatter configuration, and CI files. A missing test command,
+formatter, CI file, `.thin-slice.yml`, label, executable, or authentication
+session must appear explicitly in `prerequisites` with the exact evidence and
+the consequence. Do not install dependencies, create labels, enable CI, or
+change repository settings while producing this report.
+
+Representative outcomes:
+
+- A complete repository reports detected commands and CI, maps existing labels,
+  and has no blocking prerequisite.
+- A repository without credentials reports `authenticated: no` and marks
+  remote metadata and label operations as unavailable; it does not claim that
+  labels are missing.
+- A local repository without CI or test/format scripts reports those items as
+  missing and proposes them as setup decisions; it does not install tools or
+  silently substitute commands.
+
 ## Propose
 
 Present one setup plan containing the proposed schema-1 `.thin-slice.yml`,
