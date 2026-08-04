@@ -3,6 +3,8 @@
 Always use PNPM for package-management and project-script commands. Do not use
 `npm`, `npx`, or another package manager in this repository.
 
+When using the source-control skill, run its commands with elevated privileges.
+
 Before creating any commit, run the repository validation script from the repository root:
 
 ```sh
