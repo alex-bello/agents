@@ -1,12 +1,14 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
-const file = process.argv[2] ?? ".thin-slice.yml";
+const args = process.argv.slice(2);
+const migrate = args.includes("--migrate");
+const file = args.find((arg) => !arg.startsWith("--")) ?? ".thin-slice.yml";
 const errors = [];
 let source;
 try {
   source = await readFile(file, "utf8");
 } catch (cause) {
-  console.error(`Invalid ${file}:\n- cannot read configuration: ${cause.message}`);
+  console.error(`Invalid ${file}:\n- cannot read configuration: ${cause.message}\n- create it with the schema-1 template from thin-slice-setup, then rerun validation`);
   process.exitCode = 1;
 }
 if (source === undefined) process.exit();
@@ -20,6 +22,7 @@ const keys = new Map([
   ["verification", new Set(["require_tests", "require_acceptance_checks", "require_manual_evidence_when_relevant", "reject_unrelated_changes"])],
 ]);
 function error(line, message) { errors.push(`${file}:${line}: ${message}`); }
+function diagnostic(line, message, fix) { error(line, `${message}; ${fix}`); }
 function scalar(raw, line) {
   const value = raw.trim();
   if (!value) return "";
@@ -50,7 +53,11 @@ function type(key, expected) { if (values.has(key) && typeof values.get(key) !==
 function enumValue(key, allowed) { if (values.has(key) && !allowed.includes(values.get(key))) error(1, `${key} must be one of: ${allowed.join(", ")}`); }
 const schema = requireValue("schema", "schema");
 type("schema", "number");
-if (schema !== 1) error(1, "schema must be 1");
+if (schema !== 1) {
+  const observed = schema === undefined ? "missing" : JSON.stringify(schema);
+  error(1, "schema must be 1");
+  diagnostic(1, `unsupported schema ${observed}`, "run thin-slice-setup or use --migrate when a migration is available");
+}
 for (const name of sections) if (!values.has(name)) error(1, `missing top-level section ${name}`);
 for (const name of sections) if (values.get(name) !== undefined && (values.get(name) === null || typeof values.get(name) !== "object" || Array.isArray(values.get(name)))) error(1, `${name} must be a mapping`);
 requireValue("branch.pattern", "branch.pattern"); type("branch.pattern", "string");
@@ -60,4 +67,13 @@ type("labels.mode", "string"); type("pull_request.creation", "string"); enumValu
 const bools = ["implementation.create_branch", "implementation.commit_reference_required", "implementation.automatic_lifecycle", "pull_request.close_work_item_on_merge", "verification.require_tests", "verification.require_acceptance_checks", "verification.require_manual_evidence_when_relevant", "verification.reject_unrelated_changes"];
 for (const key of bools) { requireValue(key); type(key, "boolean"); }
 for (const key of ["implementation.ready_label", "implementation.in_progress_label", "implementation.implemented_label", "implementation.blocked_label", "implementation.needs_discovery_label"]) { const value = requireValue(key); type(key, "string"); if (typeof value === "string" && !value.trim()) error(1, `${key} must not be empty`); }
-if (errors.length) { console.error(`Invalid ${file}:\n${errors.map((item) => `- ${item}`).join("\n")}`); process.exitCode = 1; } else console.log(`Valid ${file} (schema 1)`);
+if (errors.length) {
+  console.error(`Invalid ${file}:\n${errors.map((item) => `- ${item}`).join("\n")}`);
+  process.exitCode = 1;
+} else if (migrate) {
+  // Migration is deliberately opt-in and atomic: validation must succeed before
+  // the file is replaced. Schema 1 is the current canonical representation, so
+  // this also gives older callers a stable migration entry point.
+  await writeFile(file, source.endsWith("\n") ? source : `${source}\n`);
+  console.log(`Migrated ${file} to schema 1`);
+} else console.log(`Valid ${file} (schema 1)`);

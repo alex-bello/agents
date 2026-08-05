@@ -159,6 +159,12 @@ resolving a selection, load and validate the target repository's
 pnpm run thin-slice:validate-config -- .thin-slice.yml
 ```
 
+The validator reports the file, line, observed problem, and next setup or
+migration action for missing, malformed, and unsupported configurations. A
+validated configuration can be passed through the opt-in migration entry point
+with `pnpm run thin-slice:validate-config -- --migrate .thin-slice.yml`;
+migration never rewrites a file that still has validation errors.
+
 This is a hard gate. If the file is absent, malformed, schema-incompatible,
 or validation fails, stop before reading selections or creating issues and
 report the validator errors with actionable setup guidance. Resolve the

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -85,4 +85,16 @@ test("reports a missing configuration file clearly", () => {
   const result = spawnSync(process.execPath, [validator, "/tmp/no-such-thin-slice-config.yml"], { encoding: "utf8" });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /cannot read configuration/);
+  assert.match(result.stderr, /thin-slice-setup/);
+});
+
+test("migrates a valid configuration through the current schema", async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), "thin-slice-config-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = path.join(dir, ".thin-slice.yml");
+  await writeFile(file, valid.trimEnd());
+  const result = spawnSync(process.execPath, [validator, "--migrate", file], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Migrated .* to schema 1/);
+  assert.equal((await readFile(file, "utf8")).endsWith("\n"), true);
 });
