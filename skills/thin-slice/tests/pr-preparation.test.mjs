@@ -44,3 +44,17 @@ test("implementation generates traceability and verification checklist entries",
     "missing checklist entry",
   ]) assert.ok(text.includes(requirement), `missing checklist rule: ${requirement}`);
 });
+
+test("implementation defines configurable post-merge work-item lifecycle", async () => {
+  const text = await readFile(implementation, "utf8");
+  for (const requirement of [
+    "Post-merge lifecycle",
+    "normalized PR state as authoritative",
+    "close_work_item_on_merge",
+    "If the PR is merged",
+    "do not close the implementation issue",
+    "closed without merging",
+    "Never treat a closed, unmerged PR as a successful",
+    "This reconciliation is idempotent",
+  ]) assert.ok(text.includes(requirement), `missing post-merge lifecycle rule: ${requirement}`);
+});

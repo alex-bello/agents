@@ -183,6 +183,34 @@ operation; do not use a provider branch API or a provider-specific CLI.
     closed. Record its URL in an issue comment. Do not apply
     `thin-slice-implemented` merely because a PR was opened.
 
+### Post-merge lifecycle
+
+After a pull request has been opened, reconcile its state with
+`skills/source-control/scripts/sc pr view <pr-number>` before reporting the
+work item as complete. Treat the normalized PR state as authoritative:
+
+- If the PR is merged and `pull_request.close_work_item_on_merge` is `true`,
+  apply the configured `implemented_label`, remove the configured
+  `in_progress_label` (and any configured `ready_label`), then close the
+  implementation issue with `sc issue close <issue-number>`. Record the merged
+  PR URL and the close result in an issue comment. Verify the issue is closed
+  before reporting completion.
+- If the PR is merged and `pull_request.close_work_item_on_merge` is `false`,
+  do not close the implementation issue. Preserve it open, apply the
+  configured `implemented_label`, remove `in_progress_label`, and report that
+  manual issue closure was intentionally skipped by configuration.
+- If the PR is closed without merging, preserve the implementation issue open,
+  keep or restore `in_progress_label` as appropriate, and report that the work
+  is not implemented. Never treat a closed, unmerged PR as a successful
+  implementation.
+- If the PR remains open, leave the issue `in-progress` and report that it is
+  awaiting PR merge.
+
+This reconciliation is idempotent: on a repeated check, do not duplicate the
+status comment or attempt to close an already-closed issue. A failed label or
+issue mutation must stop the transition, preserve the last verified state, and
+be reported as a provider mutation failure.
+
 ## Failure states
 
 - Missing or ambiguous issue, unresolved dependency, or overlapping dirty
