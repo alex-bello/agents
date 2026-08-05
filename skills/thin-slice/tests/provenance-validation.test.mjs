@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const planning = "skills/thin-slice/thin-slice/SKILL.md";
+const implementation = "skills/thin-slice/thin-slice-implement/SKILL.md";
+
+test("child creation defines a complete tracker-to-child provenance gate", async () => {
+  const text = await readFile(planning, "utf8");
+  for (const requirement of [
+    "exactly one `thin-slice-work-item` block",
+    "schema: 2",
+    "source-tracker",
+    "configured tracker label",
+    "unchecked source checklist item",
+    "wrong-kind",
+    "unknown-group",
+    "unknown-item",
+    "actionable diagnostic",
+  ]) assert.ok(text.includes(requirement), `missing provenance rule: ${requirement}`);
+});
+
+test("implementation rejects invalid provenance before downstream work", async () => {
+  const text = await readFile(implementation, "utf8");
+  for (const requirement of [
+    "Before inspecting implementation files",
+    "branching, lifecycle mutation, or code changes",
+    "missing, duplicate, malformed",
+    "closed or non-tracker parents",
+    "Source tracker",
+    "Source item",
+    "Do not add lifecycle labels, create a branch, or run implementation work",
+  ]) assert.ok(text.includes(requirement), `missing implementation gate: ${requirement}`);
+});
+
+test("provenance diagnostics identify observed values and corrections", async () => {
+  const text = await readFile(implementation, "utf8");
+  assert.match(text, /observed .*expected/);
+  assert.match(text, /positive integer tracker issue[\s\n]+number/);
+  assert.match(text, /unchecked checklist item/);
+});

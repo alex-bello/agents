@@ -84,6 +84,10 @@ automation is enabled.
    the current branch is safe and authorized.
 3. Translate the issue into a short local checklist and inspect only the code
    and tests needed for that checklist.
+   Before inspecting implementation files, run the provenance gate described
+   below. A child with invalid provenance is not an implementation candidate:
+   stop without changing code, report every diagnostic, and request correction
+   of the child body or its originating tracker.
 4. Implement the smallest complete behavior in scope. Do not pull deferred
    work into the change.
 5. Run every issue-specified check and repository-required validation. Add or
@@ -115,6 +119,44 @@ automation is enabled.
   `thin-slice-blocked` when enabled and stop.
 - Provider mutation failure: preserve the worktree and never claim a lifecycle
   transition occurred.
+
+## Provenance gate
+
+For an explicit issue or a ready-label selection, validate provenance before
+branching, lifecycle mutation, or code changes. Parse exactly one block in the
+issue body:
+
+```md
+<!-- thin-slice-work-item
+schema: 2
+kind: work-item
+source-tracker: 123
+feature-group: group-slug
+source-item: item-slug
+depends-on: []
+-->
+```
+
+Require `schema: 2`, `kind: work-item`, a positive integer `source-tracker`,
+non-empty exact-match `feature-group` and `source-item` slugs, and a present
+list-valued `depends-on` field containing only positive integer issue numbers.
+Reject missing, duplicate, malformed, or unsupported fields with diagnostics
+that identify the field, observed value, and correction. Fetch the referenced
+tracker and require that it exists, is open, has the configured tracker label,
+and is a `thin-slice-tracker`. Confirm that the child's `Source tracker`,
+`Feature group`, and `Source item` text matches the metadata and that the
+tracker contains the same feature group and source checklist item. Reject
+mismatches, unknown groups/items, closed or non-tracker parents, and malformed
+issue numbers. Emit one diagnostic per failure, for example:
+
+`source-tracker: observed "abc"; expected a positive integer tracker issue
+number.`
+
+`source-item: observed "cache-results"; expected an unchecked checklist item
+with slug "cache-results" in tracker #123, feature group "storage".`
+
+Do not add lifecycle labels, create a branch, or run implementation work until
+the gate passes. This gate applies even when the issue has the ready label.
 
 ## Required report
 

@@ -163,32 +163,51 @@ This is a hard gate. If the file is absent, malformed, schema-incompatible,
 or validation fails, stop before reading selections or creating issues and
 report the validator errors with actionable setup guidance. Resolve the
 configured implementation label from the validated configuration and the
-provider's existing labels; never invent, silently substitute, or create a
-label during child creation.
+provider's existing labels; never invent, silently substitute, or create a label
+during child creation.
 
 Accept exactly one of these selection forms per invocation:
 
 - an exact checklist item, matched by its complete source text or stable item
   slug; or
 - an exact feature-group heading/slug, which expands to that group's unchecked
-  checklist items in their original order.
+  checklist items in their original order. These are the unchecked checklist
+  items selected for creation: unchecked checklist items.
 
 Reject an absent or ambiguous item/group before any mutation. For an item,
 propose one child; for a group, propose one child per unchecked item. Do not
 create children for checked items, items in other groups, or unselected items.
+Do not create children for checked items.
 Show the resolved selection, issue titles, implementation label, and count,
 then require confirmation of that exact batch immediately before creating it.
 If a later child creation fails, report the successful source-item-to-issue
 mapping and stop; do not retry or create replacements.
 
 Every child body must carry enough context to remain useful outside the
-tracker. It must include the parent tracker number and URL, the feature-group
-name/slug, the complete source checklist item, an implementation objective,
+tracker. It must include the parent tracker number and URL, the feature-group name/slug,
+the complete source checklist item, an implementation objective,
 scope and non-goals, detailed behavior, and useful acceptance criteria tied to
 the source item. Include focused verification steps and the standard
 `thin-slice-work-item` provenance block. The configured implementation label
 must be applied to every created child, alongside any configured system/work
 labels.
+
+Every child also needs useful acceptance criteria tied to the source item.
+
+Before an implementation issue is accepted or selected for downstream work,
+validate its provenance against the remote tracker. The body must contain
+exactly one `thin-slice-work-item` block with `schema: 2`, `kind: work-item`,
+an integer `source-tracker`, a non-empty `feature-group`, a non-empty
+`source-item`, and a `depends-on` list. Fetch `source-tracker` and require that
+it exists, is open, has the configured tracker label, and contains the
+referenced feature-group and unchecked source checklist item. The child's
+human-readable `Source tracker`, `Feature group`, and `Source item` fields must
+match the metadata values and the fetched tracker; issue numbers must be
+integers and slugs must match exactly. A missing, duplicate, malformed,
+nonexistent, closed, wrong-kind, wrong-parent, unknown-group, or unknown-item
+link is invalid. Report each failure as an actionable diagnostic naming the
+field, observed value, and required correction; do not accept the issue or
+begin implementation until all diagnostics are resolved.
 
 Child creation is never an automatic consequence of planning, tracker
 creation, refinement, or implementation. The default behavior remains to
@@ -258,6 +277,7 @@ body cannot be edited through the shared `sc` contract, so record the mapping
 from source item to child issue in a tracker comment. Do not claim that a
 checkbox was updated unless the remote body was actually changed by an
 available, explicitly authorized operation.
+Preserve the source-item-to-issue mapping in that report and comment.
 
 ### Tracker creation contract
 
