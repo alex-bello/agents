@@ -309,11 +309,30 @@ or create a duplicate.
 
 ### New work discovered during implementation
 
-When implementation reveals additional work, keep it attached to the source
-feature group. Add it as a comment using this format:
+When implementation, verification, review, or post-merge reconciliation
+reveals additional work, record it against the originating tracker issue, not
+the implementation issue alone. First resolve the source tracker from the
+current work item's `source-tracker` metadata and verify that the selected
+feature-group slug and source-item slug occur in that tracker. If the source
+tracker or group cannot be resolved, stop and report the missing provenance;
+do not create an orphan discovery.
+
+Add exactly one comment to the source tracker using this format:
 
 ```md
-## Discovered work — `group-slug`
+## Discovered work — `group-slug` — `discovery-slug`
+
+<!-- thin-slice-discovery
+schema: 1
+kind: discovery
+source-tracker: 123
+source-tracker-url: https://example.test/issues/123
+feature-group: group-slug
+source-item: item-slug
+origin: implementation-issue
+origin-issue: 456
+status: awaiting-triage
+-->
 
 - [ ] New smallest verifiable increment
   - Why: ...
@@ -322,9 +341,25 @@ feature group. Add it as a comment using this format:
   - Source item: `item-slug`
 ```
 
-If the new item is ready for assignment, offer to create a child issue from
-that comment using the same confirmation and labels. Preserve provenance to
-the current child issue or source item; never detach the discovery into an
+The comment must preserve the originating tracker number and URL, feature
+group, source checklist item, discovery slug, origin kind and issue (when
+applicable), and lifecycle status. Use `awaiting-triage` for a new discovery;
+change it only when a later, explicitly authorized operation records triage.
+Apply the configured discovery label to the tracker only when the provider
+supports issue-label mutation through `source-control`; never invent or
+silently substitute a label. The comment is the system of record for the
+new item because the shared contract cannot edit tracker bodies.
+
+After the comment succeeds, report its tracker URL/number and the complete
+provenance fields. If the new item is ready for assignment, offer to create a
+child issue from that comment using the same confirmation and labels. A child
+must retain `source-tracker`, `feature-group`, `source-item`, and the discovery
+slug, so its delivery path remains:
+
+`tracker group → discovery comment → child issue → branch/commits → pull request`
+
+If commenting fails, preserve the proposed comment and do not retry through
+another interface or create a duplicate. Never detach the discovery into an
 unrelated group.
 
 ### Label configuration
