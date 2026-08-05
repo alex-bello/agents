@@ -137,10 +137,26 @@ operation; do not use a provider branch API or a provider-specific CLI.
    `Discovered work` comment, apply `thin-slice-needs-discovery`, and stop.
 13. Commit when required by repository instructions or configuration. Otherwise
    do not commit unless authorized.
-14. In `pr` mode, open a pull request only when policy allows it. If policy is
-   `ask`, obtain confirmation before the external mutation. Include the issue
-   reference, acceptance summary, verification results, and follow-ups.
-15. Keep the issue `thin-slice-in-progress` until the pull request is merged or
+14. In `pr` mode, prepare the pull request before any external mutation. Resolve
+    the repository's detected default branch as `base`, verify the checked-out
+    implementation branch as `head`, and confirm both names and the current
+    commit. Use the issue title as the PR title, suffixing `(#<issue-number>)`
+    when that reference is not already present. Prepare a body containing:
+    the implementation issue and source tracker references, a concise summary,
+    acceptance criteria and their status, verification commands and results,
+    relevant manual evidence, follow-ups or discovered work, and a checklist
+    stating that unrelated changes were reviewed. Write this body to a temporary
+    file and inspect it before invoking `sc pr create`.
+15. Apply `pull_request.creation` exactly: `never` prepares and reports the PR
+    metadata but does not call `sc pr create`; `ask` presents the complete
+    prepared title, base, head, commit, labels, and body summary and obtains
+    explicit confirmation immediately before the external mutation; `automatic`
+    creates it after all verification and commit-reference gates pass. Treat an
+    unknown value as a configuration error even if the validator was bypassed.
+    Resolve the configured pull-request label from the validated label mapping;
+    do not invent one or silently omit a required mapped label. After creation,
+    verify the normalized PR number and URL and record both in the issue comment.
+16. Keep the issue `thin-slice-in-progress` until the pull request is merged or
     closed. Record its URL in an issue comment. Do not apply
     `thin-slice-implemented` merely because a PR was opened.
 
