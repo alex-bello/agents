@@ -149,6 +149,52 @@ call `gh`, `tea`, a raw API, or a provider connector directly. First inspect
 the provider and authenticate status, then read the narrowest required issue
 data. Use temporary body files for every create or comment operation.
 
+### On-demand child creation
+
+The create-work-items mode is an explicit, operator-selected action. Before
+resolving a selection, load and validate the target repository's
+`.thin-slice.yml`:
+
+```sh
+pnpm run thin-slice:validate-config -- .thin-slice.yml
+```
+
+This is a hard gate. If the file is absent, malformed, schema-incompatible,
+or validation fails, stop before reading selections or creating issues and
+report the validator errors with actionable setup guidance. Resolve the
+configured implementation label from the validated configuration and the
+provider's existing labels; never invent, silently substitute, or create a
+label during child creation.
+
+Accept exactly one of these selection forms per invocation:
+
+- an exact checklist item, matched by its complete source text or stable item
+  slug; or
+- an exact feature-group heading/slug, which expands to that group's unchecked
+  checklist items in their original order.
+
+Reject an absent or ambiguous item/group before any mutation. For an item,
+propose one child; for a group, propose one child per unchecked item. Do not
+create children for checked items, items in other groups, or unselected items.
+Show the resolved selection, issue titles, implementation label, and count,
+then require confirmation of that exact batch immediately before creating it.
+If a later child creation fails, report the successful source-item-to-issue
+mapping and stop; do not retry or create replacements.
+
+Every child body must carry enough context to remain useful outside the
+tracker. It must include the parent tracker number and URL, the feature-group
+name/slug, the complete source checklist item, an implementation objective,
+scope and non-goals, detailed behavior, and useful acceptance criteria tied to
+the source item. Include focused verification steps and the standard
+`thin-slice-work-item` provenance block. The configured implementation label
+must be applied to every created child, alongside any configured system/work
+labels.
+
+Child creation is never an automatic consequence of planning, tracker
+creation, refinement, or implementation. The default behavior remains to
+leave all checklist items in the tracker until an operator explicitly selects
+an item or feature group and confirms creation.
+
 ### Tracker issue
 
 Create one tracker issue only. Its title should identify the outcome and its
