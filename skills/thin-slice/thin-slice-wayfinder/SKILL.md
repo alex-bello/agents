@@ -15,6 +15,29 @@ planning principles and the `source-control` skill for repository issue
 operations. Do not create an issue until the user has reviewed the proposed
 spec and explicitly confirms the exact title and repository write.
 
+## 0. Validate setup before refinement
+
+Before asking any refinement question, read `.thin-slice.yml` from the target
+repository and run:
+
+```sh
+pnpm run thin-slice:validate-config -- .thin-slice.yml
+```
+
+This is a hard gate. If the file is missing, malformed, schema-incompatible,
+or the command fails, stop before discovery and provide the command's errors
+plus actionable setup guidance: create or repair the schema-1 configuration
+using `thin-slice-setup`, then rerun validation. Do not ask refinement
+questions or create an issue while the gate is failing.
+
+After schema validation, verify that the configuration is compatible with
+Wayfinder. It must define mappings for the `thin-slice` (system),
+`thin-slice-tracker` (tracker), and `thin-slice-wayfinder` (source) vocabulary.
+In mapped mode, each vocabulary name must resolve through `labels.mappings` to
+one provider label; in native mode, the vocabulary names themselves are the
+provider labels. If any required mapping is absent or ambiguous, stop with
+the missing mapping and setup guidance.
+
 ## 1. Establish context
 
 Read applicable `AGENTS.md`, `README.md`, and relevant local skills. Inspect the
@@ -94,8 +117,11 @@ call `gh`, `tea`, a raw API, or a provider connector directly. Verify the
 normalized result has the expected provider, repository, operation, number, and
 URL.
 
-Use existing labels only. Do not assume labels can be created. Do not create
-child issues as part of this skill; offer that later through `thin-slice`.
+Resolve the three configured labels before drafting the final confirmation.
+Use existing labels only; do not assume labels can be created. Show the
+resolved provider labels (and their vocabulary names) in the confirmation.
+Do not create child issues as part of this skill; offer that later through
+`thin-slice`.
 
 Append this metadata block to the issue body:
 
