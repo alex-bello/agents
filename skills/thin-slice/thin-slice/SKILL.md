@@ -213,6 +213,28 @@ from source item to child issue in a tracker comment. Do not claim that a
 checkbox was updated unless the remote body was actually changed by an
 available, explicitly authorized operation.
 
+### Tracker creation contract
+
+When creating a tracker from a refined specification, create exactly one issue
+only after explicit confirmation of the exact title, repository, complete
+body, and resolved tracker label. The body must contain the complete
+specification and its acceptance criteria, not a shortened summary, followed
+by normalized provenance metadata:
+
+```md
+<!-- thin-slice-provenance
+schema: 1
+kind: specification
+source: thin-slice-wayfinder
+status: refined
+-->
+```
+
+Use `skills/source-control/scripts/sc issue create --body-file` for the single
+mutation and verify its normalized issue number and URL. If creation fails,
+report the failure, preserve the body, and do not retry via another interface
+or create a duplicate.
+
 ### New work discovered during implementation
 
 When implementation reveals additional work, keep it attached to the source

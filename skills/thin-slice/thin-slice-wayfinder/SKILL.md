@@ -111,11 +111,26 @@ Immediately before writing, show the exact issue title, repository/provider,
 labels, and that exactly one issue will be created with no child issues or
 comments. Ask for explicit confirmation of that exact operation.
 
+The confirmed issue payload is the complete refined specification, including
+its acceptance criteria, verification strategy, risks, follow-up work, and
+immediate next action. Do not summarize, truncate, or replace any section with
+an instruction to consult the conversation. The configured tracker label must
+be included in the payload's labels; the source label may be included when it
+is configured and resolved, but must not be invented.
+
 After confirmation, follow `source-control`: run `scripts/sc provider`, use a
 temporary body file, and invoke `scripts/sc issue create --body-file`. Never
 call `gh`, `tea`, a raw API, or a provider connector directly. Verify the
 normalized result has the expected provider, repository, operation, number, and
 URL.
+
+Treat creation as a single externally visible mutation. On any provider,
+authentication, label, or payload failure, stop and report the exact failure;
+do not retry through another interface or create a replacement issue. Preserve
+the final specification locally/in the response so the same confirmed payload
+can be retried deliberately after remediation. If the command returns success,
+verify that exactly one issue identifier and URL were returned before claiming
+creation.
 
 Resolve the three configured labels before drafting the final confirmation.
 Use existing labels only; do not assume labels can be created. Show the
@@ -134,6 +149,10 @@ source: thin-slice-wayfinder
 labels: [thin-slice-wayfinder, thin-slice]
 -->
 ```
+
+The metadata is normalized provenance, not optional decoration: `schema` is a
+number, `kind` is `specification`, `source` is `thin-slice-wayfinder`, and
+`status` is `refined`.
 
 ## Output and failure handling
 
