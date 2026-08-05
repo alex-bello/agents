@@ -53,3 +53,18 @@ test("implementation defines the validated branch workflow", async () => {
     "Verify the resulting branch name",
   ]) assert.ok(text.includes(requirement), `missing branch workflow rule: ${requirement}`);
 });
+
+test("implementation validates commit references before delivery", async () => {
+  const text = await readFile(implementation, "utf8");
+  for (const requirement of [
+    "implementation.commit_reference_required",
+    "commit subject or body",
+    "#<selected-issue-number>",
+    "short SHA",
+    "observed subject",
+    "If the setting is false",
+  ]) assert.ok(text.includes(requirement), `missing commit-reference rule: ${requirement}`);
+  assert.match(text, /every\s+implementation commit/);
+  assert.match(text, /Stop before creating a commit or\s+pull request/);
+  assert.match(text, /one actionable diagnostic\s+per offending commit/);
+});

@@ -118,15 +118,29 @@ operation; do not use a provider branch API or a provider-specific CLI.
    acceptance checks and record evidence.
 10. Review the diff for scope, accidental changes, secrets, generated files,
    and regressions.
-11. If additional work is low-risk and reversible, include only what is needed
+11. When `implementation.commit_reference_required` is true, validate every
+   implementation commit before committing or opening a pull request. The
+   commit range is the commits on the implementation branch after its base
+   (the branch point recorded before implementation) through `HEAD`; an empty
+   range passes because there is nothing to validate. Each commit subject or
+   body must contain an issue reference in the form `#<selected-issue-number>`
+   (for example, `#42`), with no reliance on the branch name, pull-request
+   title, or a reference to a different issue. Emit one actionable diagnostic
+   per offending commit including its short SHA, observed subject, and the
+   correction, for example: `commit abc1234: observed "Implement parser";
+   expected the commit subject or body to reference implementation issue #42
+   (for example, "Implement parser (#42)").` Stop before creating a commit or
+   pull request until all diagnostics are resolved. If the setting is false,
+   skip this gate and state that it was disabled in the report.
+12. If additional work is low-risk and reversible, include only what is needed
    to preserve the stated behavior and explain it. Otherwise add the standard
    `Discovered work` comment, apply `thin-slice-needs-discovery`, and stop.
-12. Commit when required by repository instructions or configuration. Otherwise
+13. Commit when required by repository instructions or configuration. Otherwise
    do not commit unless authorized.
-13. In `pr` mode, open a pull request only when policy allows it. If policy is
+14. In `pr` mode, open a pull request only when policy allows it. If policy is
    `ask`, obtain confirmation before the external mutation. Include the issue
    reference, acceptance summary, verification results, and follow-ups.
-14. Keep the issue `thin-slice-in-progress` until the pull request is merged or
+15. Keep the issue `thin-slice-in-progress` until the pull request is merged or
     closed. Record its URL in an issue comment. Do not apply
     `thin-slice-implemented` merely because a PR was opened.
 
