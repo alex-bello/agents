@@ -1,0 +1,109 @@
+---
+name: thin-slice-audit
+description: Audit a repository's thin-slice lifecycle records and report orphaned trackers, work items, branches, commits, and pull requests with actionable repair guidance. Use when traceability needs checking or lifecycle records may be stale or broken.
+---
+
+# Thin-slice lifecycle audit
+
+Produce a read-only, evidence-backed report for the lifecycle represented by
+`.thin-slice.yml`. The audit is a diagnostic: it never edits issues, labels,
+branches, commits, pull requests, or configuration. Use `source-control` for
+provider operations and Git for local repository inspection; never call
+`gh`, `tea`, a raw API, or a provider connector directly.
+
+## Preconditions
+
+Read `AGENTS.md`, `README.md`, `.thin-slice.yml`, and the applicable thin-slice
+skills. Validate the configuration before inspecting lifecycle records:
+
+```sh
+pnpm run thin-slice:validate-config -- .thin-slice.yml
+```
+
+If configuration is missing, invalid, or incompatible, report that as a
+blocking audit finding and stop. Do not infer labels, branch patterns, or a
+provider from incomplete configuration. Run `source-control`'s provider
+operation and record the provider and repository in the report.
+
+## Scope and record discovery
+
+Use the configured vocabulary and mappings to identify tracker issues and
+work-item issues. Inspect every matching record available through the provider,
+not just open issues. A work item is in scope when it has the configured
+work-item label or valid `thin-slice` work-item metadata. A tracker is in scope
+when it has the configured tracker label or valid tracker metadata.
+
+For each work item, parse and retain its normalized provenance:
+
+```text
+source tracker → implementation issue → implementation branch → commits → pull request
+```
+
+Use the issue body and comments as evidence for explicit issue/URL references;
+do not treat an issue title, branch name, or PR title as a substitute for a
+traceability reference. Resolve branch and commit state locally with Git, and
+resolve PR number, URL, base, head, and state with `source-control`. A missing
+provider capability is a finding, not proof that a record is orphaned.
+
+## Findings
+
+Report one finding per broken relationship. At minimum check:
+
+- tracker metadata points to an existing tracker with the configured tracker
+  label and expected feature-group/source-item entry;
+- the implementation issue exists, has the configured work-item label, and
+  its `source-tracker` agrees with the tracker reference;
+- the expected implementation branch exists locally or as a remote branch,
+  follows the configured branch pattern, and is associated with the work item;
+- every implementation commit after the branch base references the
+  implementation issue in its subject or body;
+- every recorded PR exists, points from the expected implementation branch to
+  the repository default branch, and explicitly references both the work item
+  and source tracker;
+- lifecycle state is coherent: an implemented work item has a merged PR,
+  while an open or closed-unmerged PR is not reported as implemented;
+- each tracker, work item, branch, commit, and PR belongs to at most one
+  lifecycle chain unless the record explicitly documents a supported
+  relationship.
+
+Classify each finding as `missing`, `invalid`, `mismatched`, `duplicate`, or
+`unverifiable`. Include the record identifier, observed evidence, expected
+relationship, and a concrete repair action. Examples of useful actions are
+“add `source-tracker: 123` to issue #45”, “restore or rename branch
+`thin-slice/45-cache-results`”, “amend commit abc1234 to reference #45”, and
+“update the PR traceability section to include tracker #123”. Never prescribe
+deleting a record as the default repair.
+
+## Output contract
+
+Return a deterministic report in this shape:
+
+```text
+Thin-slice lifecycle audit
+Repository: owner/name
+Provider: forgejo|github
+Configuration: valid|blocked
+Summary: <records checked>; <findings>; <unverifiable checks>
+
+Findings
+- [invalid] work item #45 → tracker: observed #999; expected existing tracker #123.
+  Evidence: <issue URL and relevant field/metadata>
+  Repair: <one concrete action>
+
+Healthy chains
+- tracker #123 → issue #45 → branch ... → commits ... → PR #67 (merged)
+
+Unverifiable checks
+- <capability or unavailable evidence and the next command/operator action>
+```
+
+Sort findings by issue number, then relationship (`tracker`, `issue`,
+`branch`, `commit`, `pull-request`), then identifier. Sort healthy chains by
+tracker number. Use `0 findings` explicitly for a clean audit. Distinguish
+“no records found” from “all records are healthy”, and do not claim complete
+coverage when provider or Git evidence was unavailable.
+
+The report is the only output mutation: do not add labels, comments, issues,
+commits, or pull requests. Preserve enough URLs, numbers, SHAs, branch names,
+and observed values that an operator can repair each finding without repeating
+the entire audit.

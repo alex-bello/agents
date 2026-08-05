@@ -43,6 +43,7 @@ the target application's agent format.
 │   └── thin-slice/
 │       ├── thin-slice/      # Core thin-slice workflow
 │       ├── thin-slice-setup/ # Repository lifecycle setup
+│       ├── thin-slice-audit/ # Lifecycle traceability audit
 │       ├── thin-slice-implement/ # Work-item implementation workflow
 │       └── thin-slice-wayfinder/
 │           ├── SKILL.md     # Idea refinement workflow
