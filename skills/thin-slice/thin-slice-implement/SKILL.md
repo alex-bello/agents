@@ -21,7 +21,7 @@ The ready-label lookup must select at most one issue. Never process a batch.
 ## Configuration
 
 Read `.thin-slice.yml` and validate it with
-`node skills/thin-slice/scripts/validate-config.mjs` when it exists. Honor its
+`pnpm run thin-slice:validate-config -- .thin-slice.yml` when it exists. Honor its
 label mappings, branch pattern, verification settings, and pull-request policy.
 Invocation options may make behavior less automated, but may not bypass
 repository instructions or safety requirements.
@@ -77,33 +77,56 @@ automation is enabled.
 
 ## Implementation workflow
 
-1. If lifecycle automation is enabled, add the in-progress label, remove the
+Resolve and check out the implementation branch only after the configuration
+and provenance gates have passed. The branch operation is a local Git
+operation; do not use a provider branch API or a provider-specific CLI.
+
+1. Confirm `.thin-slice.yml` exists. Run the configured validator from the
+   repository root and stop on any error, reporting its complete diagnostics
+   and the setup/migration action it recommends. Resolve the implementation
+   label from the validated configuration; never invent a fallback label.
+2. Fetch the selected issue, verify it is open and carries the configured
+   implementation label (or explicitly report the missing ready label when an
+   issue number was supplied), and run the provenance gate below. Before inspecting implementation files, do not mutate labels, create a branch, or inspect implementation files before the gate passes.
+3. Render `branch.pattern` by replacing `{issue-number}` with the decimal
+   issue number and `{short-slug}` with a deterministic slug of the issue
+   title: lowercase, non-alphanumeric runs become one hyphen, leading and
+   trailing hyphens are removed, and the result is limited to  fifty
+   characters. Reject an empty slug or a rendered branch name that is not a
+   valid Git ref instead of guessing a name.
+4. Read the current branch and worktree immediately before mutation. If the
+   rendered branch already exists locally, check it out only when it points to
+   the current `HEAD` or has no commits ahead of the current base; otherwise
+   stop and report the collision. If it does not exist, create it from the
+   current `HEAD` and check it out. Verify the resulting branch name before
+   continuing.
+5. Only after successful checkout, apply optional lifecycle labels and begin
+   implementation. If any Git operation fails, preserve the worktree and
+   report the failure without claiming the branch was created or checked out.
+
+6. If lifecycle automation is enabled, add the in-progress label, remove the
    ready label, and record a concise start comment. If mutation fails, stop.
-2. Create or check out the configured branch, such as
-   `thin-slice/{issue-number}-{short-slug}`. Do not create one if disabled and
-   the current branch is safe and authorized.
-3. Translate the issue into a short local checklist and inspect only the code
+7. Translate the issue into a short local checklist and inspect only the code
    and tests needed for that checklist.
-   Before inspecting implementation files, run the provenance gate described
-   below. A child with invalid provenance is not an implementation candidate:
-   stop without changing code, report every diagnostic, and request correction
-   of the child body or its originating tracker.
-4. Implement the smallest complete behavior in scope. Do not pull deferred
+   A child with invalid provenance is not an implementation candidate: stop
+   without changing code, report every diagnostic, and request correction of
+   the child body or its originating tracker.
+8. Implement the smallest complete behavior in scope. Do not pull deferred
    work into the change.
-5. Run every issue-specified check and repository-required validation. Add or
+9. Run every issue-specified check and repository-required validation. Add or
    update tests required by the acceptance criteria. Perform relevant manual
    acceptance checks and record evidence.
-6. Review the diff for scope, accidental changes, secrets, generated files,
+10. Review the diff for scope, accidental changes, secrets, generated files,
    and regressions.
-7. If additional work is low-risk and reversible, include only what is needed
+11. If additional work is low-risk and reversible, include only what is needed
    to preserve the stated behavior and explain it. Otherwise add the standard
    `Discovered work` comment, apply `thin-slice-needs-discovery`, and stop.
-8. Commit when required by repository instructions or configuration. Otherwise
+12. Commit when required by repository instructions or configuration. Otherwise
    do not commit unless authorized.
-9. In `pr` mode, open a pull request only when policy allows it. If policy is
+13. In `pr` mode, open a pull request only when policy allows it. If policy is
    `ask`, obtain confirmation before the external mutation. Include the issue
    reference, acceptance summary, verification results, and follow-ups.
-10. Keep the issue `thin-slice-in-progress` until the pull request is merged or
+14. Keep the issue `thin-slice-in-progress` until the pull request is merged or
     closed. Record its URL in an issue comment. Do not apply
     `thin-slice-implemented` merely because a PR was opened.
 

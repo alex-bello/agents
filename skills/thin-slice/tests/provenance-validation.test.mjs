@@ -39,3 +39,17 @@ test("provenance diagnostics identify observed values and corrections", async ()
   assert.match(text, /positive integer tracker issue[\s\n]+number/);
   assert.match(text, /unchecked checklist item/);
 });
+
+test("implementation defines the validated branch workflow", async () => {
+  const text = await readFile(implementation, "utf8");
+  for (const requirement of [
+    "pnpm run thin-slice:validate-config",
+    "Before inspecting implementation files",
+    "{issue-number}",
+    "{short-slug}",
+    "lowercase, non-alphanumeric runs become one hyphen",
+    "valid Git ref",
+    "current `HEAD`",
+    "Verify the resulting branch name",
+  ]) assert.ok(text.includes(requirement), `missing branch workflow rule: ${requirement}`);
+});
