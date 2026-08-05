@@ -30,3 +30,17 @@ test("implementation applies every configured PR creation mode", async () => {
     "configured pull-request label",
   ]) assert.ok(text.includes(requirement), `missing PR creation rule: ${requirement}`);
 });
+
+test("implementation generates traceability and verification checklist entries", async () => {
+  const text = await readFile(implementation, "utf8");
+  for (const requirement of [
+    "implementation issue as `#<issue-number>`",
+    "source tracker as `#<source-tracker>`",
+    "`- [x] Tests: ...` or `- [ ] Tests: ...`",
+    "`- [x] Acceptance: ...` or `- [ ] Acceptance: ...`",
+    "`- [x] Manual evidence: ...` or `- [ ] Manual evidence: ...`",
+    "Preserve the issue's acceptance-criterion order",
+    "Mark an entry checked only",
+    "missing checklist entry",
+  ]) assert.ok(text.includes(requirement), `missing checklist rule: ${requirement}`);
+});

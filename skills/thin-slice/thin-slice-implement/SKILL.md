@@ -147,6 +147,29 @@ operation; do not use a provider branch API or a provider-specific CLI.
     relevant manual evidence, follow-ups or discovered work, and a checklist
     stating that unrelated changes were reviewed. Write this body to a temporary
     file and inspect it before invoking `sc pr create`.
+
+    Generate the PR body from the selected issue contract and verification
+    record; do not rely on the branch name or PR title as traceability. The
+    traceability section must link the implementation issue as `#<issue-number>`
+    and link its source tracker as `#<source-tracker>` (including their URLs
+    when the provider returned them). The verification section must contain one
+    checklist entry for each applicable category:
+
+    - `- [x] Tests: ...` or `- [ ] Tests: ...` for every required test command,
+      with the command and result or failure recorded.
+    - `- [x] Acceptance: ...` or `- [ ] Acceptance: ...` for every acceptance
+      criterion, with the observed result recorded.
+    - `- [x] Manual evidence: ...` or `- [ ] Manual evidence: ...` whenever
+      the configuration or issue makes manual evidence relevant, naming the
+      checked behavior and evidence (for example, a screenshot, output, or
+      reproduction steps).
+
+    Preserve the issue's acceptance-criterion order. Mark an entry checked only
+    when its evidence was actually collected; unchecked or failed entries must
+    remain visible with the reason. Always include `- [x] Unrelated changes
+    reviewed` after reviewing the diff, or leave it unchecked with the reason.
+    If a required test, acceptance check, or relevant manual-evidence item is
+    missing, stop before PR creation and report the missing checklist entry.
 15. Apply `pull_request.creation` exactly: `never` prepares and reports the PR
     metadata but does not call `sc pr create`; `ask` presents the complete
     prepared title, base, head, commit, labels, and body summary and obtains
