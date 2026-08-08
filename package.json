@@ -1,12 +1,12 @@
 {
   "name": "agents",
-  "version": "0.9.18",
+  "version": "0.9.19",
   "private": true,
   "description": "Reusable Agent Skills and custom agent definitions",
   "scripts": {
     "test": "node scripts/validate.mjs",
     "validate": "node scripts/validate.mjs",
-    "thin-slice:validate-config": "node skills/thin-slice/scripts/validate-config.mjs",
+    "thin-slice:validate-config": "node skills/thin-slice/thin-slice/scripts/validate-config.mjs",
     "skills:list": "pnpm dlx skills@latest add . --list"
   },
   "engines": {

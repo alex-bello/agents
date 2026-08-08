@@ -13,7 +13,7 @@ labels without explicit confirmation.
 
 1. Read `AGENTS.md`, `README.md`, and repository-local instructions.
 2. Check for `.thin-slice.yml`; if present, validate it with
-   `node skills/thin-slice/scripts/validate-config.mjs`.
+   `node skills/thin-slice/thin-slice/scripts/validate-config.mjs`.
 3. Use `skills/source-control/scripts/sc provider`, `auth status`, `repo view`,
    `label list`, and `capabilities`.
 4. Detect the default branch, existing branch conventions, package manager,

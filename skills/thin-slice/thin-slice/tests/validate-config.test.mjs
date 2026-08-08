@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-const validator = path.resolve("skills/thin-slice/scripts/validate-config.mjs");
+const validator = path.resolve("skills/thin-slice/thin-slice/scripts/validate-config.mjs");
 const valid = `schema: 1
 labels:
   mode: mapped
