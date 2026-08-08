@@ -16,9 +16,12 @@ labels without explicit confirmation.
    `node skills/thin-slice/scripts/validate-config.mjs`.
 3. Use `skills/source-control/scripts/sc provider`, `auth status`, `repo view`,
    `label list`, and `capabilities`.
-4. Detect the default branch, existing branch conventions, test command,
-   formatter, and CI configuration from the repository. Report anything
-   missing; do not infer that a missing tool should be installed.
+4. Detect the default branch, existing branch conventions, package manager,
+   package/project scripts, test command, formatter, and CI configuration from
+   the repository. In package-based repositories, verify that `package.json`
+   exposes `validate` and `thin-slice:validate-config`, recording the commands
+   they run. Report anything missing; do not infer that a missing tool should
+   be installed.
 
 ### Inspection report
 
@@ -42,6 +45,12 @@ labels
   required: names mapped to existing | proposed | missing
 conventions
   branch_pattern: detected pattern | missing
+  package_scripts:
+    package_manager: command | missing
+    validate: command | missing
+    thin_slice_validate_config: command | missing
+    test: command | missing
+    formatter: command | missing
   test_command: command | missing
   formatter: command | missing
   ci: configuration paths/commands | missing
@@ -54,11 +63,16 @@ prerequisites
 
 At minimum, inspect the provider and authentication status, repository metadata,
 labels, capabilities, the default branch, local branch names, package/project
-scripts, formatter configuration, and CI files. A missing test command,
+scripts, formatter configuration, and CI files. In a package-based repository,
+`validate` must be the canonical pre-commit/pre-PR validation entry point and
+`thin-slice:validate-config` must invoke the repository's thin-slice config
+validator. A missing test command,
 formatter, CI file, `.thin-slice.yml`, label, executable, or authentication
 session must appear explicitly in `prerequisites` with the exact evidence and
 the consequence. Do not install dependencies, create labels, enable CI, or
-change repository settings while producing this report.
+change repository settings while producing this report. Missing or invalid
+package scripts are proposed setup changes; do not silently substitute a
+command.
 
 Representative outcomes:
 
@@ -74,12 +88,15 @@ Representative outcomes:
 ## Propose
 
 Present one setup plan containing the proposed schema-1 `.thin-slice.yml`,
-label mappings, setup branch name, and setup pull request title/body. Clearly
+required `package.json` script changes, label mappings, setup branch name, and
+setup pull request title/body. Clearly
 separate existing labels from labels that would be created. Ask for explicit
-confirmation of label creation and the setup branch/PR mutations.
+confirmation of package-script changes, label creation, and the setup
+branch/PR mutations.
 
-The confirmation must be actionable and unambiguous. Show two separate
-decisions: the exact labels to create, including color and description, and
+The confirmation must be actionable and unambiguous. Show three separate
+decisions: the exact package-script edits, the exact labels to create,
+including color and description, and
 the branch, configuration commit, and PR mutations. Existing labels must be
 listed separately and must not be recreated. A general “looks good” response
 to inspection is not approval for either mutation.
@@ -118,31 +135,43 @@ verification:
 1. Re-read the current branch and default branch immediately before mutation.
    Refuse to continue if they are the same unless the user explicitly
    authorized modifying the default branch.
-2. Create each approved label through `skills/source-control/scripts/sc label
+2. Apply the approved package-script changes to `package.json`, preserving
+   unrelated scripts and existing behavior. The required entries are:
+
+   - `validate`: the repository's complete validation command.
+   - `thin-slice:validate-config`: the repository's thin-slice config validator.
+
+   Add `test` or formatter scripts only when inspection found a real command.
+   Show old and new commands when replacing an existing entry, then verify
+   both scripts resolve through the configured package manager.
+3. Create each approved label through `skills/source-control/scripts/sc label
    create`; list labels again and verify every requested name exists.
-3. Create and check out a deterministic setup branch such as
+4. Create and check out a deterministic setup branch such as
    `thin-slice/setup` from the default branch. Refuse to reuse a branch with
    unrelated changes without explicit approval.
-4. Write `.thin-slice.yml`, validate it with
+5. Write `.thin-slice.yml`, validate it with
    `pnpm run thin-slice:validate-config -- .thin-slice.yml`, then run
    `pnpm run validate` and detected tests/formatters. Stop before committing
    when a required check fails.
-5. Commit only `.thin-slice.yml` (and explicitly approved setup artifacts),
+6. Commit only `.thin-slice.yml`, the approved `package.json` changes (and
+   explicitly approved setup artifacts),
    verify the commit's parent and changed paths, then push the setup branch.
-6. When PR creation is approved and supported, create it through
+7. When PR creation is approved and supported, create it through
    `skills/source-control/scripts/sc pr create`, targeting the detected
    default branch. Otherwise stop after the commit and report the prerequisite.
-7. Report branches, labels, validation, checks, commit identifier, push result,
+8. Report branches, package-script changes, labels, validation, checks, commit
+   identifier, push result,
    and PR identifier/URL (or why no PR was opened).
 
 ### Required setup evidence
 
 Before handoff, verify that the default branch tip is unchanged, the setup
-branch contains only the configuration commit, the configuration passes schema
-validation, every approved label exists and no unapproved label was created,
-and any PR targets the default branch and contains the setup commit. Record
-the commands and normalized results. A failed verification must not be
-followed by PR creation.
+branch contains only the configuration and approved package-script changes,
+the configuration passes schema validation, `pnpm run validate` succeeds,
+every approved label exists and no unapproved label was created, and any PR
+targets the default branch and contains the setup commit. Record the commands
+and normalized results. A failed verification must not be followed by PR
+creation.
 
 If a required capability is unavailable, stop with the exact prerequisite and
 leave the worktree recoverable. Never silently fall back to direct `tea`, `gh`,
