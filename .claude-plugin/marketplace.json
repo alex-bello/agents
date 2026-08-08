@@ -15,6 +15,7 @@
         "./skills/skill-authoring",
         "./skills/source-control",
         "./skills/thin-slice/thin-slice",
+        "./skills/thin-slice/thin-slice-audit",
         "./skills/thin-slice/thin-slice-implement",
         "./skills/thin-slice/thin-slice-setup",
         "./skills/thin-slice/thin-slice-wayfinder"
