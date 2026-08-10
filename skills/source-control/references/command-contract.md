@@ -29,7 +29,7 @@ Global options must precede the resource:
 | `issue view` | `NUMBER` | none |
 | `issue comments` | `NUMBER` | none |
 | `issue create` | `--title TEXT`, `--body-file PATH` | repeated `--label NAME` |
-| `issue edit` | `NUMBER`, `--body-file PATH` | none |
+| `issue edit` | `NUMBER` | `--body-file PATH`, repeated `--add-label NAME`, repeated `--remove-label NAME` |
 | `issue close` | `NUMBER` | none |
 | `issue comment` | `NUMBER`, `--body-file PATH` | none |
 | `pr list` | none | `--state open\|closed\|all` |

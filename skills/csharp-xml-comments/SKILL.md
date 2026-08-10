@@ -1,5 +1,6 @@
 ---
 name: csharp-xml-comments
+version: 1.0.0
 description: Add or improve C# XML documentation comments consistently across a repository, a single .cs file, or a path glob. Use when asked to document C# code or add XML summary comments.
 ---
 

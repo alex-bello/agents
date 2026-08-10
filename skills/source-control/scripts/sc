@@ -288,10 +288,19 @@ function github(operation, args, options) {
     return;
   }
   if (operation === "issue.edit") {
-    const parsed = parseOptions(args, { "body-file": "value" });
+    const parsed = parseOptions(args, { "body-file": "value", "add-label": "many", "remove-label": "many" });
     const number = requireValue(parsed._[0], "issue number");
-    requireFile(parsed["body-file"], "--body-file");
-    const result = run("gh", ["issue", "edit", number, "--body-file", parsed["body-file"], ...scoped]);
+    const native = ["issue", "edit", number, ...scoped];
+    if (parsed["body-file"]) {
+      requireFile(parsed["body-file"], "--body-file");
+      native.push("--body-file", parsed["body-file"]);
+    }
+    for (const label of parsed["add-label"]) native.push("--add-label", label);
+    for (const label of parsed["remove-label"]) native.push("--remove-label", label);
+    if (!parsed["body-file"] && !parsed["add-label"].length && !parsed["remove-label"].length) {
+      fail(EXIT.usage, "issue edit requires --body-file, --add-label, or --remove-label");
+    }
+    const result = run("gh", native);
     emit({ provider: "github", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
     return;
   }
@@ -456,10 +465,19 @@ function forgejo(operation, args, options) {
     return;
   }
   if (operation === "issue.edit") {
-    const parsed = parseOptions(args, { "body-file": "value" });
+    const parsed = parseOptions(args, { "body-file": "value", "add-label": "many", "remove-label": "many" });
     const number = requireValue(parsed._[0], "issue number");
-    const body = requireFile(parsed["body-file"], "--body-file");
-    const result = run("tea", ["issues", "edit", number, "--description", body, ...scoped]);
+    const native = ["issues", "edit", number, ...scoped];
+    if (parsed["body-file"]) {
+      const body = requireFile(parsed["body-file"], "--body-file");
+      native.push("--description", body);
+    }
+    if (parsed["add-label"].length) native.push("--add-labels", parsed["add-label"].join(","));
+    if (parsed["remove-label"].length) native.push("--remove-labels", parsed["remove-label"].join(","));
+    if (!parsed["body-file"] && !parsed["add-label"].length && !parsed["remove-label"].length) {
+      fail(EXIT.usage, "issue edit requires --body-file, --add-label, or --remove-label");
+    }
+    const result = run("tea", native);
     emit({ provider: "forgejo", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
     return;
   }

@@ -1,5 +1,6 @@
 ---
 name: source-control
+version: 1.1.0
 description: Use Git for local source-control operations and one deterministic command interface for Forgejo and GitHub repository, issue, and pull-request operations. Use when an agent needs to inspect repository state, manage branches, list or view issues and pull requests, read comments or diffs, check CI, create, edit, or close an issue or pull request, comment, or check out a pull request.
 ---
 
@@ -14,6 +15,11 @@ Git-native operations include status, diff, log, show, remotes, fetch, pull,
 push, branch creation/listing, switch/checkout, add, commit, merge, rebase,
 and tags. `scripts/sc` is for provider metadata and collaboration operations
 such as issues, labels, pull requests, checks, and comments.
+
+Use `scripts/sc issue edit <number> --add-label <name>` and
+`--remove-label <name>` for label mutations. Repeat either option for multiple
+labels; the wrapper translates these options to the native GitHub or Forgejo
+CLI syntax.
 
 ## Workflow
 

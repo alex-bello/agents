@@ -1,5 +1,6 @@
 ---
 name: thin-slice-setup
+version: 1.0.0
 description: Inspect a repository and prepare its thin-slice lifecycle configuration, label plan, setup branch, and pull request after explicit confirmation.
 ---
 

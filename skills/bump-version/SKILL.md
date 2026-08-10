@@ -1,5 +1,6 @@
 ---
 name: bump-version
+version: 1.0.0
 description: Bump package.json's version before committing, to satisfy the pre-commit version-bump hook. Decides major/minor/patch from SemVer rules by reading the staged diff, and optionally produces an alpha/beta prerelease (with a counter or a commit-hash identifier). Use when preparing a commit, when a commit was rejected for not bumping the version, or when the user asks to bump/release/tag a version.
 ---
 

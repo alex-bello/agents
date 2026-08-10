@@ -57,6 +57,7 @@ frontmatter:
 ```md
 ---
 name: my-skill
+version: 1.0.0
 description: What the skill does and when an agent should use it.
 ---
 
@@ -68,6 +69,12 @@ Instructions for the agent.
 Supporting files such as scripts, references, examples, and assets should live
 inside the same skill directory. Never commit secrets or machine-specific
 credentials.
+
+The `version` field is semantic versioning for installed skill content. Increase
+the patch component for fixes, the minor component for additive behavior, and
+the major component for breaking workflow changes. Compare this value with the
+installed `SKILL.md` frontmatter when checking whether another machine needs an
+update; the skills installer does not use it to resolve dependencies.
 
 ## Add a skill
 

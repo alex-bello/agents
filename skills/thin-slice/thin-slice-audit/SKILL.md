@@ -1,5 +1,6 @@
 ---
 name: thin-slice-audit
+version: 1.0.0
 description: Audit a repository's thin-slice lifecycle records and report orphaned trackers, work items, branches, commits, and pull requests with actionable repair guidance. Use when traceability needs checking or lifecycle records may be stale or broken.
 ---
 

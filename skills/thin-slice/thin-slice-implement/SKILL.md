@@ -1,5 +1,6 @@
 ---
 name: thin-slice-implement
+version: 1.2.0
 description: Implement exactly one thin-slice work issue from its specification, verify it, manage its lifecycle labels, and optionally open a pull request. Use when explicitly asked to implement an issue or when a thin-slice issue is selected by its configured ready label.
 ---
 
@@ -105,7 +106,9 @@ operation; do not use a provider branch API or a provider-specific CLI.
    report the failure without claiming the branch was created or checked out.
 
 6. If lifecycle automation is enabled, add the in-progress label, remove the
-   ready label, and record a concise start comment. If mutation fails, stop.
+   ready label using `sc issue edit <issue-number> --add-label <label>` and
+   `--remove-label <label>`, then record a concise start comment. If mutation
+   fails, stop.
 7. Translate the issue into a short local checklist and inspect only the code
    and tests needed for that checklist.
    A child with invalid provenance is not an implementation candidate: stop
@@ -147,6 +150,11 @@ operation; do not use a provider branch API or a provider-specific CLI.
     relevant manual evidence, follow-ups or discovered work, and a checklist
     stating that unrelated changes were reviewed. Write this body to a temporary
     file and inspect it before invoking `sc pr create`.
+
+    Explicitly reference the thin-slice work item with `Closes #<issue-number>`
+    in the PR body, using the actual implementation issue number. Listing the
+    work item only as the implementation issue does not close it when the PR is
+    merged.
 
     Generate the PR body from the selected issue contract and verification
     record; do not rely on the branch name or PR title as traceability. The

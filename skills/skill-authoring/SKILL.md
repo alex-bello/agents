@@ -1,5 +1,6 @@
 ---
 name: skill-authoring
+version: 1.1.0
 description: Create or improve reusable Agent Skills in this repository when a workflow should be packaged for installation with the skills CLI.
 ---
 
@@ -17,8 +18,11 @@ can be discovered by `pnpm dlx skills@latest`.
 4. Create `skills/<name>/SKILL.md`, where `<name>` is lowercase kebab-case. If
    grouping related skills, keep the group directory free of its own `SKILL.md`
    so the installer does not copy nested skills twice.
-5. Add YAML frontmatter with a `name` matching the directory and a specific
-   `description` explaining what the skill does and when to use it.
+5. Add YAML frontmatter with a `name` matching the directory, a semantic
+   `version` (starting at `1.0.0`), and a specific `description` explaining
+   what the skill does and when to use it. Increment the version when the
+   installed skill content changes: patch for fixes, minor for additive
+   behavior, and major for breaking workflow changes.
 6. Write imperative instructions in the body. Include inputs, workflow,
    verification, expected output, and failure handling when relevant.
 7. Put large reference material in `references/`, executable helpers in

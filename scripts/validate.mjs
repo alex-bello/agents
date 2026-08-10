@@ -50,10 +50,15 @@ for (const file of files) {
   }
 
   const name = frontmatter.name;
+  const version = frontmatter.version;
   const description = frontmatter.description;
   const directoryName = path.basename(path.dirname(file));
 
   if (!name) errors.push(`${relative}: missing name`);
+  if (!version) errors.push(`${relative}: missing version`);
+  if (version && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+    errors.push(`${relative}: version must use semantic versioning (for example, 1.0.0)`);
+  }
   if (!description) errors.push(`${relative}: missing description`);
   if (name && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
     errors.push(`${relative}: name must be lowercase kebab-case`);

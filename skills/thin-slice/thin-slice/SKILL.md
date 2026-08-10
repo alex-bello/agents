@@ -1,5 +1,6 @@
 ---
 name: thin-slice
+version: 1.0.0
 description: Fully refine an idea and divide its implementation into the smallest reasonable, human-verifiable work items, optionally managed through a single gh/tea issue tracker. Use when a user wants detailed discovery without losing incremental control.
 ---
 

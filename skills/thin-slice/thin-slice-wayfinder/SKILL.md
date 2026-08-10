@@ -1,5 +1,6 @@
 ---
 name: thin-slice-wayfinder
+version: 1.0.0
 description: Lead an iterative product and engineering discovery conversation, then turn a fully refined idea into a detailed thin-slice specification saved as one repository issue. Use when a user has a rough software idea and wants gaps identified, decisions made, and implementation work organized before coding.
 ---
 
