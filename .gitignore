@@ -20,6 +20,9 @@
 node_modules/
 npm-debug.log*
 
+# PNPM
+.pnpm-store/
+
 # Environment and credentials
 .env
 .env.*

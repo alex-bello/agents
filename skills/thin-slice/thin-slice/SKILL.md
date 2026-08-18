@@ -216,6 +216,14 @@ link is invalid. Report each failure as an actionable diagnostic naming the
 field, observed value, and required correction; do not accept the issue or
 begin implementation until all diagnostics are resolved.
 
+Dependency serialization is part of this contract. The metadata `depends-on`
+field is always a list of positive implementation issue numbers, never
+checklist text or a source-item slug. A planned dependency may be named by its
+exact source-item slug in the human-readable `Dependencies` section, but that
+slug must not be copied into metadata. Once its child issue exists, put its
+issue number in both places. Planned dependencies block implementation until
+their child issues exist and are added to `depends-on`.
+
 Child creation is never an automatic consequence of planning, tracker
 creation, refinement, or implementation. The default behavior remains to
 leave all checklist items in the tracker until an operator explicitly selects

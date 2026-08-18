@@ -55,9 +55,12 @@ pull_request:
 4. If selection was by label, require the configured ready label. For an
    explicit issue, report a missing ready label and ask before proceeding unless
    direct implementation was explicitly requested.
-5. Parse `depends-on` from metadata and the dependency section. Every
-   dependency must be closed or have a merged pull request. Otherwise stop
-   without changing code and report the unresolved dependency.
+5. Parse dependencies using the serialization contract below. Metadata is the
+   authoritative list of implementation issue numbers. The human-readable
+   section may additionally contain planned source-item slugs; resolve those
+   through the source tracker when a child exists. Every resolved dependency
+   must be closed or have a merged pull request. A slug without a child is a
+   hard stop; never treat it as an issue number or silently ignore it.
 6. Inspect the worktree and current branch. Continue past clearly unrelated
    uncommitted changes, but stop if changes overlap the issue or make
    verification unreliable.
@@ -251,7 +254,13 @@ depends-on: []
 
 Require `schema: 2`, `kind: work-item`, a positive integer `source-tracker`,
 non-empty exact-match `feature-group` and `source-item` slugs, and a present
-list-valued `depends-on` field containing only positive integer issue numbers.
+list-valued `depends-on` field containing only positive integer implementation
+issue numbers. Never accept a source-item slug in this field. In the human
+readable `Dependencies` section, accept either `#<issue-number>` references or
+exact source-item slugs; resolve slugs against the referenced tracker and
+require each resolved child to have matching work-item provenance. A slug
+without a child is a planned dependency and blocks implementation until its
+child issue exists and its number is added to metadata.
 Reject missing, duplicate, malformed, or unsupported fields with diagnostics
 that identify the field, observed value, and correction. Fetch the referenced
 tracker and require that it exists, is open, has the configured tracker label,
