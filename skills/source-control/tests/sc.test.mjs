@@ -186,6 +186,22 @@ test("edits a GitHub issue body from a file", async (t) => {
   });
 });
 
+test("edits GitHub labels singly and repeatedly", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: `
+if [ "$*" = "issue edit 7 --add-label ready --add-label in-progress --remove-label blocked" ]; then
+  printf '%s\\n' 'https://github.com/owner/project/issues/7'
+else exit 99; fi`,
+  });
+  const result = invoke(directory, ["issue", "edit", "7", "--add-label", "ready", "--add-label", "in-progress", "--remove-label", "blocked"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "github", operation: "issue.edit", repository: "owner/project", number: 7,
+    success: true, url: "https://github.com/owner/project/issues/7",
+  });
+});
+
 test("edits a Forgejo issue body from a file", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
@@ -202,6 +218,50 @@ else exit 99; fi`,
     provider: "forgejo", operation: "issue.edit", repository: "owner/project", number: 9,
     success: true, url: "https://forge.example/owner/project/issues/9",
   });
+});
+
+test("edits Forgejo labels singly and repeatedly", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2 $3 $4 $5 $6 $7" = "issues edit 9 --add-labels ready,in-progress --remove-labels blocked" ]; then
+  printf '%s\\n' 'https://forge.example/owner/project/issues/9'
+else exit 99; fi`,
+  });
+  const result = invoke(directory, ["issue", "edit", "9", "--add-label", "ready", "--add-label", "in-progress", "--remove-label", "blocked"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "forgejo", operation: "issue.edit", repository: "owner/project", number: 9,
+    success: true, url: "https://forge.example/owner/project/issues/9",
+  });
+});
+
+test("permits body-only edits without label arguments for both providers", async (t) => {
+  for (const [provider, scripts, args, expected] of [
+    ["github", {
+      git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+      gh: 'test "$1 $2 $3 $4" = "issue edit 7 --body-file" && test -f "$5" && printf "ok\\n"',
+    }, ["issue", "edit", "7"], "github"],
+    ["forgejo", {
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: 'if [ "$1" = "logins" ]; then printf "[{\\"url\\":\\"https://forge.example\\"}]\\n"; elif [ "$1 $2 $3" = "issues edit 9" ] && [ "$4" = "--description" ] && [ "$5" = "Updated body" ]; then printf "ok\\n"; else exit 99; fi',
+    }, ["issue", "edit", "9"], "forgejo"],
+  ]) {
+    const directory = await fixture(t, scripts);
+    const bodyFile = path.join(directory, "body.md");
+    await writeFile(bodyFile, "Updated body");
+    const result = invoke(directory, [...args, "--body-file", bodyFile]);
+    assert.equal(result.status, 0, `${expected}: ${result.stderr}`);
+  }
+});
+
+test("preserves the last verified lifecycle state when a mutation fails", () => {
+  const lastVerified = ["thin-slice", "thin-slice-ready"];
+  const mutation = { ok: false, error: "provider rejected label update" };
+  const resultingState = mutation.ok ? ["thin-slice", "thin-slice-in-progress"] : lastVerified;
+  assert.deepEqual(resultingState, lastVerified);
+  assert.match(mutation.error, /provider rejected/);
 });
 
 test("edits a Forgejo pull-request body from a file", async (t) => {

@@ -301,7 +301,7 @@ function github(operation, args, options) {
       fail(EXIT.usage, "issue edit requires --body-file, --add-label, or --remove-label");
     }
     const result = run("gh", native);
-    emit({ provider: "github", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
+    emit({ provider: "github", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
     return;
   }
   if (operation === "pr.edit") {

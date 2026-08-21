@@ -112,6 +112,15 @@ operation; do not use a provider branch API or a provider-specific CLI.
    ready label using `sc issue edit <issue-number> --add-label <label>` and
    `--remove-label <label>`, then record a concise start comment. If mutation
    fails, stop.
+
+   Every lifecycle transition is one provider-neutral `sc issue edit` mutation
+   with repeated `--add-label` and `--remove-label` options as needed; never
+   bypass this boundary with provider-specific commands. The transition contract
+   is that a successful mutation yields exactly the configured target lifecycle
+   label plus the stable `thin-slice` label. On any failed mutation, stop before
+   the next lifecycle step, retain the last successfully verified label state,
+   and report `issue.edit` plus the provider diagnostic. Do not claim that a
+   partially attempted transition succeeded or retry through another interface.
 7. Translate the issue into a short local checklist and inspect only the code
    and tests needed for that checklist.
    A child with invalid provenance is not an implementation candidate: stop
@@ -234,6 +243,11 @@ be reported as a provider mutation failure.
   `thin-slice-blocked` when enabled and stop.
 - Provider mutation failure: preserve the worktree and never claim a lifecycle
   transition occurred.
+
+The lifecycle fixture must cover ready, in-progress, implemented, discovery,
+and blocked states, and must assert exact normalized labels after successful
+transitions and preservation of the last verified state after representative
+failures.
 
 ## Provenance gate
 
