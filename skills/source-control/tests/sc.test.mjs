@@ -294,6 +294,46 @@ test("strips terminal hyperlink controls from created URLs", async (t) => {
   assert.equal(JSON.parse(result.stdout).url, "https://github.com/owner/project/issues/12");
 });
 
+test("normalizes a GitHub pull-request creation identity", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'printf "%s\\n" "https://github.com/owner/project/pull/12"',
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature", "--title", "Feature", "--body-file", bodyFile]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "github", operation: "pr.create", repository: "owner/project", success: true,
+    number: 12, url: "https://github.com/owner/project/pulls/12", title: "Feature", base: "main", head: "feature", state: "open",
+  });
+});
+
+test("normalizes a Forgejo issue URL as a pull request URL", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: 'if [ "$1" = "logins" ]; then printf "[{\\"url\\":\\"https://forge.example\\"}]\\n"; else printf "%s\\n" "https://forge.example/owner/project/issues/13"; fi',
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature", "--title", "Feature", "--body-file", bodyFile]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).url, "https://forge.example/owner/project/pulls/13");
+  assert.equal(JSON.parse(result.stdout).number, 13);
+});
+
+test("rejects ambiguous pull-request creation responses", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'printf "%s\\n" "https://github.com/owner/project/pulls/12 https://github.com/owner/project/pulls/13"',
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature", "--title", "Feature", "--body-file", bodyFile]);
+  assert.equal(result.status, 8);
+  assert.match(result.stderr, /expected exactly one URL/);
+});
+
 test("closes a GitHub issue", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "git@github.com:owner/project.git"',

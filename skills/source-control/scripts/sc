@@ -224,6 +224,42 @@ function urlFromOutput(text) {
   return text.match(/https?:\/\/[^\s\x00-\x1f\x7f]+/)?.[0] ?? null;
 }
 
+function normalizeCreatedPullRequest(output, provider, repository, parsed) {
+  const urls = [...output.replace(/\x1b\]8;;|\x1b\\|\x07/g, "").matchAll(/https?:\/\/[^\s\x00-\x1f\x7f]+/g)]
+    .map((match) => match[0].replace(/[),.;]+$/, ""));
+  const uniqueUrls = [...new Set(urls)];
+  if (uniqueUrls.length !== 1) {
+    fail(EXIT.normalize, `could not normalize pull-request creation output: expected exactly one URL, found ${uniqueUrls.length}`);
+  }
+
+  let source;
+  try {
+    source = new URL(uniqueUrls[0]);
+  } catch {
+    fail(EXIT.normalize, "could not normalize pull-request creation output: URL is malformed");
+  }
+  const parts = source.pathname.replace(/\/$/, "").split("/").filter(Boolean);
+  const repositoryParts = repository.split("/");
+  const kind = parts[repositoryParts.length];
+  const number = parts[repositoryParts.length + 1];
+  if (parts.length !== repositoryParts.length + 2 || parts.slice(0, repositoryParts.length).join("/") !== repository || !["issues", "pull", "pulls"].includes(kind) || !/^\d+$/.test(number) || Number(number) < 1) {
+    fail(EXIT.normalize, "could not normalize pull-request creation output: URL does not identify a pull request in the repository");
+  }
+
+  return {
+    provider,
+    operation: "pr.create",
+    repository,
+    success: true,
+    number: Number(number),
+    url: `${source.origin}/${repository}/pulls/${number}`,
+    title: parsed.title,
+    base: parsed.base,
+    head: parsed.head,
+    state: "open",
+  };
+}
+
 function github(operation, args, options) {
   const repo = repository(options);
   const scoped = repoArgs("github", options);
@@ -324,7 +360,7 @@ function github(operation, args, options) {
     requireFile(parsed["body-file"], "--body-file");
     const resource = operation.split(".")[0];
     const result = run("gh", [resource, "comment", number, "--body-file", parsed["body-file"], ...scoped]);
-    emit({ provider: "github", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
+    emit(normalizeCreatedPullRequest(result.stdout, "github", repo, parsed));
     return;
   }
   if (operation === "pr.list") {
@@ -375,7 +411,7 @@ function github(operation, args, options) {
     if (parsed.draft) native.push("--draft");
     for (const label of parsed.label) native.push("--label", label);
     const result = run("gh", native);
-    emit({ provider: "github", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
+    emit(normalizeCreatedPullRequest(result.stdout, "github", repo, parsed));
     return;
   }
   if (operation === "pr.checkout") {
@@ -528,7 +564,7 @@ function forgejo(operation, args, options) {
     if (parsed.draft) native.push("--draft");
     if (parsed.label.length) native.push("--labels", parsed.label.join(","));
     const result = run("tea", native);
-    emit({ provider: "forgejo", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
+    emit(normalizeCreatedPullRequest(result.stdout, "forgejo", repo, parsed));
     return;
   }
   if (operation === "pr.checkout") {
