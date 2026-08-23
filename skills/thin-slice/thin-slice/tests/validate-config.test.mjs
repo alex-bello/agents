@@ -43,6 +43,11 @@ test("accepts the schema-1 setup configuration", async (t) => {
   const result = await run(t, valid); assert.equal(result.status, 0, result.stderr);
 });
 
+test("accepts an optional configured default branch", async (t) => {
+  const result = await run(t, valid.replace("branch:\n  pattern:", "branch:\n  default: trunk\n  pattern:"));
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("reports missing, incompatible, and unknown configuration", async (t) => {
   const result = await run(t, "schema: 2\nbranch:\n  pattern: main\nextra: true\n");
   assert.notEqual(result.status, 0);

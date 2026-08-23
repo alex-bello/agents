@@ -16,7 +16,7 @@ const values = new Map();
 const sections = new Set(["labels", "branch", "implementation", "pull_request", "verification"]);
 const keys = new Map([
   ["labels", new Set(["mode", "vocabulary", "mappings"])],
-  ["branch", new Set(["pattern"])],
+  ["branch", new Set(["pattern", "default"])],
   ["implementation", new Set(["create_branch", "commit_reference_required", "ready_label", "in_progress_label", "implemented_label", "blocked_label", "needs_discovery_label", "automatic_lifecycle"])],
   ["pull_request", new Set(["creation", "close_work_item_on_merge"])],
   ["verification", new Set(["require_tests", "require_acceptance_checks", "require_manual_evidence_when_relevant", "reject_unrelated_changes"])],
@@ -62,6 +62,7 @@ for (const name of sections) if (!values.has(name)) error(1, `missing top-level 
 for (const name of sections) if (values.get(name) !== undefined && (values.get(name) === null || typeof values.get(name) !== "object" || Array.isArray(values.get(name)))) error(1, `${name} must be a mapping`);
 requireValue("branch.pattern", "branch.pattern"); type("branch.pattern", "string");
 if (typeof values.get("branch.pattern") === "string" && (!values.get("branch.pattern").includes("{issue-number}") || !values.get("branch.pattern").includes("{short-slug}"))) error(1, "branch.pattern must contain {issue-number} and {short-slug}");
+if (values.has("branch.default")) { type("branch.default", "string"); if (typeof values.get("branch.default") === "string" && !values.get("branch.default").trim()) error(1, "branch.default must not be empty"); }
 for (const key of ["labels.mode", "pull_request.creation"]) requireValue(key);
 type("labels.mode", "string"); type("pull_request.creation", "string"); enumValue("labels.mode", ["mapped", "native"]); enumValue("pull_request.creation", ["never", "ask", "automatic"]);
 const bools = ["implementation.create_branch", "implementation.commit_reference_required", "implementation.automatic_lifecycle", "pull_request.close_work_item_on_merge", "verification.require_tests", "verification.require_acceptance_checks", "verification.require_manual_evidence_when_relevant", "verification.reject_unrelated_changes"];

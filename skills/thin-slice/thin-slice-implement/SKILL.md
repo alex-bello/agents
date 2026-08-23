@@ -153,9 +153,17 @@ operation; do not use a provider branch API or a provider-specific CLI.
 13. Commit when required by repository instructions or configuration. Otherwise
    do not commit unless authorized.
 14. In `pr` mode, prepare the pull request before any external mutation. Resolve
-    the repository's detected default branch as `base`, verify the checked-out
-    implementation branch as `head`, and confirm both names and the current
-    commit. Use the issue title as the PR title, suffixing `(#<issue-number>)`
+    the repository's default branch with this exact precedence: (1) the
+    non-empty `defaultBranch` returned by `sc repo view` (provider metadata), (2) the local remote
+    symbolic reference from `git symbolic-ref --short refs/remotes/<remote>/HEAD`
+    (strip the `<remote>/` prefix), (3) the non-empty optional
+    `branch.default` configured in `.thin-slice.yml`, then (4) an explicit
+    ambiguity failure. This is an explicit ambiguity failure. Treat unreadable, conflicting, or empty candidates at a
+    given source as unavailable; never guess `main` or `master`. If no single
+    candidate remains, stop before push or PR creation and report every observed
+    candidate and the missing source. No single candidate remains: stop before push or PR creation. Resolve the repository's detected default
+    branch as `base` (the detected default branch as `base`), verify the checked-out implementation branch as `head`,
+    and confirm both names and the current commit. Use the issue title as the PR title, suffixing `(#<issue-number>)`
     when that reference is not already present. Prepare a body containing:
     the implementation issue and source tracker references, a concise summary,
     acceptance criteria and their status, verification commands and results,

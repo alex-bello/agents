@@ -7,6 +7,13 @@ const implementation = "skills/thin-slice/thin-slice-implement/SKILL.md";
 test("implementation defines deterministic pull-request preparation", async () => {
   const text = await readFile(implementation, "utf8");
   for (const requirement of [
+    "exact precedence: (1)",
+    "defaultBranch",
+    "git symbolic-ref --short refs/remotes/<remote>/HEAD",
+    "branch.default",
+    "explicit ambiguity failure",
+    "never guess `main` or `master`",
+    "stop before push or PR creation",
     "detected default branch as `base`",
     "checked-out",
     "current",
@@ -17,6 +24,15 @@ test("implementation defines deterministic pull-request preparation", async () =
     "temporary\n    file",
     "normalized PR number and URL",
   ]) assert.ok(text.includes(requirement), `missing PR preparation rule: ${requirement}`);
+});
+
+test("implementation covers every default-branch resolution path", async () => {
+  const text = await readFile(implementation, "utf8");
+  assert.match(text, /provider metadata/i);
+  assert.match(text, /local remote/i);
+  assert.match(text, /configured/i);
+  assert.match(text, /ambiguity/i);
+  assert.match(text, /no single candidate remains[\s\S]*stop before push or PR creation/i);
 });
 
 test("implementation applies every configured PR creation mode", async () => {
