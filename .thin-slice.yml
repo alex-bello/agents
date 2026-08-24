@@ -1,8 +1,8 @@
 schema: 1
 labels:
   mode: mapped
-  vocabulary: {}
-  mappings: {}
+  vocabulary: {"thin-slice":"thin-slice","thin-slice-tracker":"thin-slice-tracker","thin-slice-wayfinder":"wayfinder"}
+  mappings: {"thin-slice":"thin-slice","thin-slice-tracker":"thin-slice-tracker","thin-slice-wayfinder":"wayfinder"}
 branch:
   pattern: thin-slice/{issue-number}-{short-slug}
 implementation:
@@ -15,8 +15,8 @@ implementation:
   needs_discovery_label: thin-slice-needs-discovery
   automatic_lifecycle: false
 pull_request:
-  creation: ask
-  close_work_item_on_merge: false
+  creation: automatic
+  close_work_item_on_merge: true
 verification:
   require_tests: true
   require_acceptance_checks: true
