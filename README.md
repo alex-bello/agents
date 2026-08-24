@@ -70,6 +70,13 @@ Supporting files such as scripts, references, examples, and assets should live
 inside the same skill directory. Never commit secrets or machine-specific
 credentials.
 
+Generated issue, comment, and pull-request bodies belong in a unique managed
+temporary directory outside the repository. Inspect the exact file before a
+provider mutation, remove the directory after success, and never stage or
+commit it. Interrupted runs must clean only the recorded uniquely named
+directory after confirming it is under the platform temporary directory; do
+not use broad temporary-directory deletion.
+
 The `version` field is semantic versioning for installed skill content. Increase
 the patch component for fixes, the minor component for additive behavior, and
 the major component for breaking workflow changes. Compare this value with the

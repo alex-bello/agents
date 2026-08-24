@@ -120,8 +120,14 @@ be included in the payload's labels; the source label may be included when it
 is configured and resolved, but must not be invented.
 
 After confirmation, follow `source-control`: run `scripts/sc provider`, use a
-temporary body file, and invoke `scripts/sc issue create --body-file`. Never
-call `gh`, `tea`, a raw API, or a provider connector directly. Verify the
+managed, uniquely named temporary body file outside the repository, inspect it
+for the exact confirmed payload and secret absence, and invoke
+`scripts/sc issue create --body-file`. Remove the managed temporary directory
+after success. If interrupted, recover only that uniquely named directory
+under the platform temporary directory; never use broad deletion. Check
+`git status --short` to confirm preparation created no repository-local
+artifact, and never stage the body file. Never call `gh`, `tea`, a raw API, or
+a provider connector directly. Verify the
 normalized result has the expected provider, repository, operation, number, and
 URL.
 

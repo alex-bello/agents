@@ -182,8 +182,16 @@ operation; do not use a provider branch API or a provider-specific CLI.
     the implementation issue and source tracker references, a concise summary,
     acceptance criteria and their status, verification commands and results,
     relevant manual evidence, follow-ups or discovered work, and a checklist
-    stating that unrelated changes were reviewed. Write this body to a temporary
-    file and inspect it before invoking `sc pr create`.
+    stating that unrelated changes were reviewed. Create the body in a managed,
+    uniquely named temporary directory outside the repository; inspect the
+    exact file before invoking `sc pr create`, including a secret scan and a
+    check for unintended paths or credentials. Remove the managed directory
+    after successful creation. If interrupted, clean only that recorded
+    directory after verifying it is under the platform temporary directory.
+    Check `git status --short` before and after preparation, never stage the
+    body file, and report cleanup failure rather than silently leaving it.
+    This is the required temporary
+    file workflow for every generated PR body.
 
     Explicitly reference the thin-slice work item with `Closes #<issue-number>`
     in the PR body, using the actual implementation issue number. Listing the

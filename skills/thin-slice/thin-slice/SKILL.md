@@ -150,6 +150,31 @@ call `gh`, `tea`, a raw API, or a provider connector directly. First inspect
 the provider and authenticate status, then read the narrowest required issue
 data. Use temporary body files for every create or comment operation.
 
+### Temporary artifact safety
+
+Create generated issue, comment, and pull-request bodies inside one managed
+temporary directory per invocation, using a unique directory name supplied by
+the operating system (for example, `mkdtemp` under the platform temporary
+directory) and unique filenames within it. Never create these files in the
+repository, a predictable shared `/tmp` path, or a tracked directory. Before
+any provider mutation, inspect the exact generated file and confirm that it
+contains only the intended Markdown, no credentials, tokens, keys, or other
+secrets, and no accidental repository paths. Pass that inspected path to
+`sc --body-file` while it exists.
+If a filename or directory collision is detected, fail with a new unique name;
+never reuse or overwrite an existing artifact.
+
+After a successful provider operation, remove the managed directory and its
+contents in a `finally`/cleanup step; cleanup failure is reported and never
+silently ignored. If the process is interrupted, do not delete broad temporary
+locations: remove only the recorded managed directory (or its uniquely named
+files) during the next deliberate cleanup, after verifying the path is inside
+the platform temporary directory. Check `git status --short` before and after
+preparation to prove that no repository-local artifact was created, and never
+stage generated body files. Do not include generated bodies, temporary paths,
+credentials, or secret-bearing environment values in commits, logs, comments,
+or PR descriptions.
+
 ### On-demand child creation
 
 The create-work-items mode is an explicit, operator-selected action. Before
