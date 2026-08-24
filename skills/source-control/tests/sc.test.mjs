@@ -322,6 +322,38 @@ test("normalizes a Forgejo issue URL as a pull request URL", async (t) => {
   assert.equal(JSON.parse(result.stdout).number, 13);
 });
 
+test("qualifies Forgejo slash-containing heads for Tea", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "pulls create" ]; then
+  test "$4" = "main" && test "$6" = "owner:feature/topic" || exit 98;
+  printf '%s\\n' 'https://forge.example/owner/project/pulls/14';
+else exit 99; fi`,
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature/topic", "--title", "Feature", "--body-file", bodyFile]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).head, "feature/topic");
+});
+
+test("reports Forgejo PR creation context on target-resolution failure", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+else printf '%s\\n' 'The target could not be found' >&2; exit 1; fi`,
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature/topic", "--title", "Feature", "--body-file", bodyFile]);
+  assert.equal(result.status, 7);
+  assert.match(result.stderr, /base "main".*head "feature\/topic".*repository "owner\/project"/s);
+  assert.match(result.stderr, /tea pulls create/);
+});
+
 test("rejects ambiguous pull-request creation responses", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "git@github.com:owner/project.git"',

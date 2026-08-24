@@ -43,6 +43,10 @@ function run(name, args, { allowFailure = false } = {}) {
   return result;
 }
 
+function nativeCommand(name, args) {
+  return [name, ...args].map((value) => /\s/.test(value) ? JSON.stringify(value) : value).join(" ");
+}
+
 function parseJson(text, context) {
   try {
     return JSON.parse(text);
@@ -559,11 +563,19 @@ function forgejo(operation, args, options) {
     const parsed = parseOptions(args, { base: "value", head: "value", title: "value", "body-file": "value", draft: "boolean", label: "many" });
     for (const field of ["base", "head", "title"]) requireValue(parsed[field], `--${field}`);
     const body = requireFile(parsed["body-file"], "--body-file");
-    const native = ["pulls", "create", "--base", parsed.base, "--head", parsed.head, "--title", parsed.title,
+    const owner = repo?.split("/")[0];
+    const head = owner && parsed.head.includes("/") && !parsed.head.includes(":")
+      ? `${owner}:${parsed.head}`
+      : parsed.head;
+    const native = ["pulls", "create", "--base", parsed.base, "--head", head, "--title", parsed.title,
       "--description", body, ...scoped];
     if (parsed.draft) native.push("--draft");
     if (parsed.label.length) native.push("--labels", parsed.label.join(","));
-    const result = run("tea", native);
+    const result = run("tea", native, { allowFailure: true });
+    if (result.status !== 0) {
+      if (result.stderr) process.stderr.write(result.stderr);
+      fail(EXIT.native, `tea command failed with exit code ${result.status ?? "unknown"} while creating PR from base "${parsed.base}" to head "${parsed.head}" in repository "${repo}"; native command: ${nativeCommand("tea", native)}`);
+    }
     emit(normalizeCreatedPullRequest(result.stdout, "forgejo", repo, parsed));
     return;
   }
