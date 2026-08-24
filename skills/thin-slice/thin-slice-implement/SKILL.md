@@ -79,6 +79,34 @@ visible issue body. If the issue remains underspecified, apply
 `thin-slice-review` and remove `thin-slice-needs-discovery` when lifecycle
 automation is enabled.
 
+### Discovery-only work
+
+A work item may declare `delivery: discovery-only` when its contract produces
+documentation rather than application source. The declaration must name the
+documentation deliverable and its audience. Valid deliverables include a
+source or capability inventory, workflow map, authorization or permission
+notes, an explicit record that application code is absent, and concrete
+follow-up thin-slice items with owners or triggering conditions. A vague
+summary, an unstructured list of ideas, or a promise to investigate later is
+not a deliverable.
+
+For discovery-only work, evaluate acceptance in two separate evidence tracks:
+
+- Documentation acceptance verifies that the named inventory, map, notes, or
+  absence record exists, is internally consistent, and contains actionable
+  next implementation slices. Review a representative output manually.
+- Code-test acceptance is not required when the contract explicitly says that
+  no application source is expected. Do not report missing source changes as
+  implementation success; record that application code was absent and why the
+  documentation is the correct result.
+
+If a discovery-only item does not identify a concrete deliverable, document
+the exact missing requirement and stop with `thin-slice-needs-discovery`.
+Never infer requirements or silently convert a normal implementation item into
+discovery-only work. A valid discovery-only item completes without source
+changes only after its documentation evidence and actionable follow-up slices
+have been reviewed.
+
 ## Implementation workflow
 
 Resolve and check out the implementation branch only after the configuration
@@ -126,11 +154,15 @@ operation; do not use a provider branch API or a provider-specific CLI.
    A child with invalid provenance is not an implementation candidate: stop
    without changing code, report every diagnostic, and request correction of
    the child body or its originating tracker.
-8. Implement the smallest complete behavior in scope. Do not pull deferred
-   work into the change.
+8. Implement the smallest complete behavior in scope. For a valid
+   `delivery: discovery-only` item, produce and review the specified
+   documentation deliverable instead of changing application source. Do not
+   pull deferred work into the change.
 9. Run every issue-specified check and repository-required validation. Add or
-   update tests required by the acceptance criteria. Perform relevant manual
-   acceptance checks and record evidence.
+   update tests required by the acceptance criteria. For discovery-only work,
+   record documentation acceptance separately from code-test acceptance,
+   document absent application code, and perform the required manual review of
+   the output.
 10. Review the diff for scope, accidental changes, secrets, generated files,
    and regressions.
 11. Record the implementation branch base before creating the first

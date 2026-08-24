@@ -112,6 +112,16 @@ each required test, acceptance, manual-evidence, and unrelated-change check.
 The PR explicitly references the work item with `Closes #<issue-number>` and
 links the source tracker.
 
+Discovery-only work is an explicit exception for contracts whose correct output
+is documentation rather than application source. Such an issue must declare
+`delivery: discovery-only` and name a concrete deliverable: for example, a
+capability inventory, workflow map, authorization notes, an application-code
+absence record, or actionable follow-up slices. Documentation acceptance is
+evaluated separately from code-test acceptance. The implementation records why
+source is absent and completes only when the documentation is reviewed and the
+next slices are concrete; vague notes or an unspecified deliverable remain
+discovery work.
+
 Lifecycle labels describe state, not intent: an issue remains in progress while
 its PR is open, and it becomes implemented only after the PR is merged. A
 closed, unmerged PR is not success. New work discovered during implementation
