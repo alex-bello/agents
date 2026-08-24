@@ -68,3 +68,18 @@ test("implementation validates commit references before delivery", async () => {
   assert.match(text, /Stop before creating a commit or\s+pull request/);
   assert.match(text, /one actionable diagnostic\s+per offending commit/);
 });
+
+test("implementation defines safe commit and PR preconditions", async () => {
+  const text = await readFile(implementation, "utf8");
+  for (const requirement of [
+    "Record the implementation branch base",
+    "at least one commit after the recorded branch base",
+    "An empty implementation range is an actionable failure",
+    "staged or unstaged changes",
+    "including untracked files",
+    "before push or `sc pr create` mutation",
+    "Unrelated commits before the recorded base are excluded",
+    "In `implement` mode",
+  ]) assert.ok(text.includes(requirement), `missing commit safety rule: ${requirement}`);
+  assert.match(text, /report the paths that must be committed or removed/);
+});

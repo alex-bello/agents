@@ -133,26 +133,40 @@ operation; do not use a provider branch API or a provider-specific CLI.
    acceptance checks and record evidence.
 10. Review the diff for scope, accidental changes, secrets, generated files,
    and regressions.
-11. When `implementation.commit_reference_required` is true, validate every
-   implementation commit before committing or opening a pull request. The
-   commit range is the commits on the implementation branch after its base
-   (the branch point recorded before implementation) through `HEAD`; an empty
-   range passes because there is nothing to validate. Each commit subject or
+11. Record the implementation branch base before creating the first
+   implementation commit (the branch point from step 4), and use that recorded
+   commit—not the current default branch or a freshly fetched ref—to define the
+   implementation range. When `implementation.commit_reference_required` is
+   true, validate every implementation commit after that base before
+   committing or opening a pull request. Each commit subject or
    body must contain an issue reference in the form `#<selected-issue-number>`
    (for example, `#42`), with no reliance on the branch name, pull-request
    title, or a reference to a different issue. Emit one actionable diagnostic
    per offending commit including its short SHA, observed subject, and the
    correction, for example: `commit abc1234: observed "Implement parser";
    expected the commit subject or body to reference implementation issue #42
-   (for example, "Implement parser (#42)").` Stop before creating a commit or
-   pull request until all diagnostics are resolved. If the setting is false,
-   skip this gate and state that it was disabled in the report.
-12. If additional work is low-risk and reversible, include only what is needed
+   (for example, "Implement parser (#42)").` Emit one actionable diagnostic
+   per offending commit, including its short SHA and observed subject; stop
+   before creating a commit or pull request until all diagnostics are resolved.
+   Unrelated commits before the recorded base are excluded from this check. If
+   the setting is false, skip this gate and state that it was disabled in the
+   report.
+12. In `pr` mode, require at least one commit after the recorded branch base.
+   An empty implementation range is an actionable failure: `PR mode requires
+   at least one implementation commit after branch base <sha>; create and
+   validate a commit before push or PR creation.` In `pr` mode, reject any
+   staged or unstaged changes, including untracked files, before push or PR
+   preparation, and report the paths that must be committed or removed. These
+   preconditions run before any push or `sc pr create` mutation. In `implement`
+   mode, implementation may finish with uncommitted changes only when no commit
+   is required by repository policy or configuration; report that state clearly
+   and do not imply that a PR is ready.
+13. If additional work is low-risk and reversible, include only what is needed
    to preserve the stated behavior and explain it. Otherwise add the standard
    `Discovered work` comment, apply `thin-slice-needs-discovery`, and stop.
-13. Commit when required by repository instructions or configuration. Otherwise
+14. Commit when required by repository instructions or configuration. Otherwise
    do not commit unless authorized.
-14. In `pr` mode, prepare the pull request before any external mutation. Resolve
+15. In `pr` mode, prepare the pull request before any external mutation. Resolve
     the repository's default branch with this exact precedence: (1) the
     non-empty `defaultBranch` returned by `sc repo view` (provider metadata), (2) the local remote
     symbolic reference from `git symbolic-ref --short refs/remotes/<remote>/HEAD`
@@ -198,7 +212,7 @@ operation; do not use a provider branch API or a provider-specific CLI.
     reviewed` after reviewing the diff, or leave it unchecked with the reason.
     If a required test, acceptance check, or relevant manual-evidence item is
     missing, stop before PR creation and report the missing checklist entry.
-15. Apply `pull_request.creation` exactly: `never` prepares and reports the PR
+16. Apply `pull_request.creation` exactly: `never` prepares and reports the PR
     metadata but does not call `sc pr create`; `ask` presents the complete
     prepared title, base, head, commit, labels, and body summary and obtains
     explicit confirmation immediately before the external mutation; `automatic`
@@ -207,7 +221,7 @@ operation; do not use a provider branch API or a provider-specific CLI.
     Resolve the configured pull-request label from the validated label mapping;
     do not invent one or silently omit a required mapped label. After creation,
     verify the normalized PR number and URL and record both in the issue comment.
-16. Keep the issue `thin-slice-in-progress` until the pull request is merged or
+17. Keep the issue `thin-slice-in-progress` until the pull request is merged or
     closed. Record its URL in an issue comment. Do not apply
     `thin-slice-implemented` merely because a PR was opened.
 
