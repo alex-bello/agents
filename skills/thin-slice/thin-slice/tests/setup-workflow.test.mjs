@@ -34,3 +34,17 @@ test("setup inspection defines a stable report and missing-prerequisite states",
     "does not install tools or\n  silently substitute commands",
   ]) assert.ok(text.includes(requirement), `missing inspection guarantee: ${requirement}`);
 });
+
+test("setup defines cwd-independent local and global path resolution", async () => {
+  const text = await readFile("skills/thin-slice/thin-slice-setup/SKILL.md", "utf8");
+  for (const requirement of [
+    "### Setup path-resolution contract",
+    "runtime module URL or equivalent runtime-provided file location",
+    "caller's `process.cwd()` is only the target repository",
+    "A local installation resolves to the repository-local skill installation",
+    "A global installation resolves to the globally installed skill directory",
+    "independently executable\nfrom the target repository root and from an unrelated working directory",
+    "fail before proposing or writing\n   scripts",
+    "stale after relocation, reinstall, or\nremoval of a global installation",
+  ]) assert.ok(text.includes(requirement), `missing path-resolution contract: ${requirement}`);
+});

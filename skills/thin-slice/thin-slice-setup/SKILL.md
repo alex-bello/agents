@@ -1,6 +1,6 @@
 ---
 name: thin-slice-setup
-version: 1.0.0
+version: 1.1.0
 description: Inspect a repository and prepare its thin-slice lifecycle configuration, label plan, setup branch, and pull request after explicit confirmation.
 ---
 
@@ -23,6 +23,47 @@ labels without explicit confirmation.
    exposes `validate` and `thin-slice:validate-config`, recording the commands
    they run. Report anything missing; do not infer that a missing tool should
    be installed.
+
+### Setup path-resolution contract
+
+When setup generates repository scripts, it must resolve the installation
+containing the currently executing `thin-slice-setup` skill before reading or
+writing any repository file. The caller's `process.cwd()` is only the target
+repository supplied by the setup operation; it is never used to locate the
+skill, its validator, or another installed skill.
+
+Resolve the active skill location with this precedence:
+
+1. Use the runtime module URL or equivalent runtime-provided file location for
+   the executing skill.
+2. Resolve the containing skill directory, then its sibling
+   `thin-slice/thin-slice/scripts/validate-config.mjs` path from that
+   installation root.
+3. If the runtime location is unavailable, fail before proposing or writing
+   scripts. Report the attempted resolution, the expected validator path, and
+   the command to rerun setup after restoring a usable installation.
+
+This contract covers both supported layouts:
+
+- A local installation resolves to the repository-local skill installation
+  directory and generates commands targeting that directory.
+- A global installation resolves to the globally installed skill directory and
+  generates commands targeting that directory; it must not fall back to a
+  repository-local path.
+
+The generated commands must be deterministic and independently executable
+from the target repository root and from an unrelated working directory. They
+must invoke the resolved validator explicitly, preserve unrelated
+`package.json` scripts, and record the exact resolved path in setup evidence.
+Use the configured package manager to run the generated commands; do not
+derive command targets from the caller's current directory.
+
+Paths are installation-specific. An absolute resolved path is valid for the
+current installation, but can become stale after relocation, reinstall, or
+removal of a global installation. Setup must surface that portability risk,
+and audit or a later setup run must report a missing resolved target with
+rerun guidance. A stable launcher command remains future work and is not
+silently substituted by this contract.
 
 ### Inspection report
 
