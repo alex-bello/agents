@@ -48,3 +48,17 @@ test("setup defines cwd-independent local and global path resolution", async () 
     "stale after relocation, reinstall, or\nremoval of a global installation",
   ]) assert.ok(text.includes(requirement), `missing path-resolution contract: ${requirement}`);
 });
+
+test("setup specifies exact script diffs and pnpm verification evidence", async () => {
+  const text = await readFile("skills/thin-slice/thin-slice-setup/SKILL.md", "utf8");
+  for (const requirement of [
+    "exact old value (or",
+    "exact new command",
+    "new commands must be written only after explicit approval",
+    "resolved skill directory, both exact commands",
+    "target repository, and the invocation context",
+    "both commands through `pnpm` from the target repository root and again from an unrelated working directory",
+    "all four runs complete successfully",
+    "exit status, and relevant output",
+  ]) assert.ok(text.includes(requirement), `missing script verification guarantee: ${requirement}`);
+});

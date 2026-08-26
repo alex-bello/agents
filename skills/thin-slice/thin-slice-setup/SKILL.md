@@ -58,6 +58,27 @@ must invoke the resolved validator explicitly, preserve unrelated
 Use the configured package manager to run the generated commands; do not
 derive command targets from the caller's current directory.
 
+For each generated entry, setup must show a before/after record before asking
+for approval. The record includes the script name, the exact old value (or
+`<missing>`), and the exact new command, for example:
+
+```text
+validate:
+  old: <missing>
+  new: pnpm exec node /absolute/skill-install/skills/thin-slice/thin-slice/scripts/validate.mjs
+thin-slice:validate-config:
+  old: node skills/thin-slice/thin-slice/scripts/validate-config.mjs
+  new: pnpm exec node /absolute/skill-install/skills/thin-slice/thin-slice/scripts/validate-config.mjs
+```
+
+The new commands must be written only after explicit approval. The setup
+evidence must preserve the resolved skill directory, both exact commands, the
+target repository, and the invocation context for each verification run. Run
+both commands through `pnpm` from the target repository root and again from an
+unrelated working directory; setup may report success only when all four runs
+complete successfully. A failure records the command, working directory,
+exit status, and relevant output and prevents commit or PR handoff.
+
 Paths are installation-specific. An absolute resolved path is valid for the
 current installation, but can become stale after relocation, reinstall, or
 removal of a global installation. Setup must surface that portability risk,
@@ -184,8 +205,11 @@ verification:
    - `thin-slice:validate-config`: the repository's thin-slice config validator.
 
    Add `test` or formatter scripts only when inspection found a real command.
-   Show old and new commands when replacing an existing entry, then verify
-   both scripts resolve through the configured package manager.
+   Show the exact old and new values for both entries before confirmation, then
+   write only the approved entries. Verify both scripts resolve through the
+   configured package manager from the repository root and an unrelated
+   working directory, recording the resolved skill location and each command's
+   invocation context and result.
 3. Create each approved label through `skills/source-control/scripts/sc label
    create`; list labels again and verify every requested name exists.
 4. Create and check out a deterministic setup branch such as
@@ -193,8 +217,11 @@ verification:
    unrelated changes without explicit approval.
 5. Write `.thin-slice.yml`, validate it with
    `pnpm run thin-slice:validate-config -- .thin-slice.yml`, then run
-   `pnpm run validate` and detected tests/formatters. Stop before committing
-   when a required check fails.
+   `pnpm run validate` and detected tests/formatters from the repository root
+   and an unrelated working directory. Stop before committing when either
+   generated validation command or another required check fails, and include
+   the exact command, working directory, exit status, and output in the
+   evidence.
 6. Commit only `.thin-slice.yml`, the approved `package.json` changes (and
    explicitly approved setup artifacts),
    verify the commit's parent and changed paths, then push the setup branch.
@@ -212,8 +239,9 @@ branch contains only the configuration and approved package-script changes,
 the configuration passes schema validation, `pnpm run validate` succeeds,
 every approved label exists and no unapproved label was created, and any PR
 targets the default branch and contains the setup commit. Record the commands
-and normalized results. A failed verification must not be followed by PR
-creation.
+and normalized results, including the resolved skill location and invocation
+context for both generated validation commands from both working directories.
+A failed verification must not be followed by PR creation.
 
 If a required capability is unavailable, stop with the exact prerequisite and
 leave the worktree recoverable. Never silently fall back to direct `tea`, `gh`,
