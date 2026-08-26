@@ -26,6 +26,30 @@ blocking audit finding and stop. Do not infer labels, branch patterns, or a
 provider from incomplete configuration. Run `source-control`'s provider
 operation and record the provider and repository in the report.
 
+### Validation preflight
+
+After configuration validation and before provider record discovery, run the
+repository's configured `validate` script through the configured package
+manager. The `validate` entry must be present in `package.json` and must be a
+well-formed, non-empty command. Capture the exact command, invocation
+directory, exit status, and relevant normalized output.
+
+Treat the preflight as a blocking gate:
+
+- A successful command permits lifecycle record discovery.
+- A missing or malformed `validate` script produces a `missing` or `invalid`
+  blocking finding with the exact expected repair command and stops discovery.
+- A non-zero command produces a `failure` blocking finding with the exact
+  command, exit status, output, and repair guidance, then stops discovery.
+- If command execution is unavailable, produce an `unverifiable` blocking
+  finding naming the unavailable capability and the next operator action; do
+  not treat it as a healthy result.
+
+The preflight is read-only. It must not edit package scripts or mutate issues,
+labels, branches, commits, or pull requests, including when validation fails.
+Record the preflight result in the audit report before any lifecycle findings;
+when it blocks, report that lifecycle discovery was not attempted.
+
 ## Scope and record discovery
 
 Use the configured vocabulary and mappings to identify tracker issues and
@@ -85,6 +109,9 @@ Repository: owner/name
 Provider: forgejo|github
 Configuration: valid|blocked
 Summary: <records checked>; <findings>; <unverifiable checks>
+
+Validation preflight: <exact command>; <working directory>; exit <status>;
+result <success|missing|invalid|failure|unverifiable>
 
 Findings
 - [invalid] work item #45 → tracker: observed #999; expected existing tracker #123.

@@ -29,3 +29,18 @@ test("audit output is deterministic and does not mutate lifecycle records", asyn
     "Healthy chains",
   ]) assert.ok(text.includes(requirement), `missing audit safety/output rule: ${requirement}`);
 });
+
+test("audit runs a blocking validation preflight before lifecycle discovery", async () => {
+  const text = await readFile(skill, "utf8");
+  for (const requirement of [
+    "### Validation preflight",
+    "configured `validate` script",
+    "before provider record discovery",
+    "missing or malformed `validate` script",
+    "non-zero command produces a `failure` blocking finding",
+    "command execution is unavailable",
+    "lifecycle discovery was not attempted",
+    "must not edit package scripts or mutate issues",
+    "Validation preflight:",
+  ]) assert.ok(text.includes(requirement), `missing validation preflight guarantee: ${requirement}`);
+});
