@@ -28,8 +28,8 @@ labels without explicit confirmation.
 
 When setup generates repository scripts, it must resolve the installation
 containing the currently executing `thin-slice-setup` skill before reading or
-writing any repository file. The caller's `process.cwd()` is only the target
-repository supplied by the setup operation; it is never used to locate the
+writing any repository file. The caller's `process.cwd()` is only the target repository
+supplied by the setup operation; it is never used to locate the
 skill, its validator, or another installed skill.
 
 Resolve the active skill location with this precedence:
@@ -58,6 +58,8 @@ must invoke the resolved validator explicitly, preserve unrelated
 Use the configured package manager to run the generated commands; do not
 derive command targets from the caller's current directory.
 
+Verification requires that both commands through `pnpm` from the target repository root and again from an unrelated working directory are recorded.
+
 For each generated entry, setup must show a before/after record before asking
 for approval. The record includes the script name, the exact old value (or
 `<missing>`), and the exact new command, for example:
@@ -78,6 +80,25 @@ both commands through `pnpm` from the target repository root and again from an
 unrelated working directory; setup may report success only when all four runs
 complete successfully. A failure records the command, working directory,
 exit status, and relevant output and prevents commit or PR handoff.
+
+Record each run in normalized evidence with these fields:
+
+```text
+skill_location: absolute installation directory
+target_repository: absolute repository directory
+script: validate | thin-slice:validate-config
+command: exact pnpm command
+working_directory: absolute invocation directory
+exit_status: numeric status
+result: success | failure
+output: relevant normalized output
+```
+
+The setup result is `success` only when all four records have
+`result: success`; otherwise it is `blocked` and must include every failed
+record before any commit or PR handoff.
+In other words, all four runs complete successfully before setup can report
+success.
 
 Paths are installation-specific. An absolute resolved path is valid for the
 current installation, but can become stale after relocation, reinstall, or
@@ -157,8 +178,9 @@ separate existing labels from labels that would be created. Ask for explicit
 confirmation of package-script changes, label creation, and the setup
 branch/PR mutations.
 
-The confirmation must be actionable and unambiguous. Show three separate
-decisions: the exact package-script edits, the exact labels to create,
+The confirmation must be actionable and unambiguous. Show two separate
+decisions for the exact package-script edits and label creation, plus a third
+decision for the branch/configuration/PR mutation: the exact package-script edits, the exact labels to create,
 including color and description, and
 the branch, configuration commit, and PR mutations. Existing labels must be
 listed separately and must not be recreated. A general “looks good” response
@@ -241,7 +263,8 @@ every approved label exists and no unapproved label was created, and any PR
 targets the default branch and contains the setup commit. Record the commands
 and normalized results, including the resolved skill location and invocation
 context for both generated validation commands from both working directories.
-A failed verification must not be followed by PR creation.
+A failed verification must leave the setup result blocked, preserve the failed
+command records, and must not be followed by commit or PR creation.
 
 If a required capability is unavailable, stop with the exact prerequisite and
 leave the worktree recoverable. Never silently fall back to direct `tea`, `gh`,

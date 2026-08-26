@@ -62,3 +62,18 @@ test("setup specifies exact script diffs and pnpm verification evidence", async 
     "exit status, and relevant output",
   ]) assert.ok(text.includes(requirement), `missing script verification guarantee: ${requirement}`);
 });
+
+test("setup evidence has normalized records and a four-run success gate", async () => {
+  const text = await readFile("skills/thin-slice/thin-slice-setup/SKILL.md", "utf8");
+  for (const requirement of [
+    "Record each run in normalized evidence",
+    "skill_location: absolute installation directory",
+    "target_repository: absolute repository directory",
+    "working_directory: absolute invocation directory",
+    "exit_status: numeric status",
+    "result: success | failure",
+    "all four records have",
+    "setup result is `success` only",
+    "setup result blocked",
+  ]) assert.ok(text.includes(requirement), `missing evidence guarantee: ${requirement}`);
+});
