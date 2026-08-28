@@ -244,6 +244,8 @@ branch:
 implementation:
   create_branch: true
   use_worktree: false
+  # Optional; relative paths resolve from the primary repository root.
+  # worktree_root: /absolute/path/outside-the-repository
   commit_reference_required: true
   ready_label: thin-slice-ready
   in_progress_label: thin-slice-in-progress
@@ -260,6 +262,15 @@ verification:
   require_manual_evidence_when_relevant: true
   reject_unrelated_changes: false
 ```
+
+`implementation.worktree_root` is optional. Relative values resolve from the
+canonical primary repository root, never the caller's current working
+directory; absolute values are canonicalized before use. When omitted, the
+default remains `<repository-parent>/.thin-slice-worktrees`. Setup evidence
+must record both the configured value and resolved absolute root. Reject
+non-string or empty values, roots inside the primary checkout, roots that
+cannot be safely created, and roots containing an unrelated directory or
+registered worktree before mutation.
 
 ## Apply after confirmation
 

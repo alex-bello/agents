@@ -33,6 +33,8 @@ Expected implementation settings include:
 implementation:
   create_branch: true
   use_worktree: false
+  # Optional; relative paths resolve from the primary repository root.
+  # worktree_root: /absolute/path/outside-the-repository
   commit_reference_required: true
   ready_label: thin-slice-ready
   in_progress_label: thin-slice-in-progress
@@ -142,14 +144,20 @@ operation; do not use a provider branch API or a provider-specific CLI.
 
    If `implementation.use_worktree` is `true`, leave the current checkout on
    its existing branch and create a separate worktree for the rendered branch.
-   Use a deterministic path outside the repository, by default
-   `<repository-parent>/.thin-slice-worktrees/<repository-name>/<issue-number>-<short-slug>`.
-   The target path must not already contain an unrelated directory or
-   registered worktree. If the branch does not exist, create both the branch
-   and worktree from the current `HEAD` with `git worktree add`; if the branch
-   already exists, attach it only when it has no commits ahead of the current
-   base and the target path is unused. Refuse branch or path collisions rather
-   than guessing, and verify the registered worktree path and branch name.
+   Use a deterministic path outside the repository. Resolve the optional
+   `implementation.worktree_root` relative to the canonical primary repository root,
+   never the caller's current working directory. When omitted, use
+   `<repository-parent>/.thin-slice-worktrees`; beneath the resolved root use
+   `<repository-name>/<issue-number>-<short-slug>`. Record the configured root,
+   canonical resolved root, and canonical worktree path. Reject non-string or
+   empty roots, roots that resolve inside the primary repository, roots that
+   cannot be created safely, unrelated directories at the target, and
+   The safety check must reject roots that cannot be created safely and
+   registered-worktree collisions before mutation. If the branch does not
+   exist, create both the branch and worktree from the current `HEAD` with
+   `git worktree add`; if the branch already exists, attach it only when it has
+   no commits ahead of the current base and the target path is unused. Refuse
+   branch or path collisions rather than guessing, and verify the registered worktree path and branch name.
 5. Only after the branch or worktree operation succeeds, apply optional
    lifecycle labels and begin implementation. When worktree mode is enabled,
    run all implementation, verification, diff, and commit commands from the

@@ -172,6 +172,8 @@ branch:
 implementation:
   create_branch: true
   use_worktree: false
+  # Optional; relative paths resolve from the primary repository root.
+  # worktree_root: /absolute/path/outside-the-repository
   commit_reference_required: true
   ready_label: thin-slice-ready
   in_progress_label: thin-slice-in-progress
@@ -203,6 +205,13 @@ verification:
   existing configurations. `commit_reference_required` requires every
   implementation commit after the branch base to mention the selected issue
   number.
+- `implementation.worktree_root` optionally changes the root used for
+  implementation worktrees. Relative values resolve from the canonical
+  primary repository root, not the caller's current directory. Omitted values
+  preserve the default `<repository-parent>/.thin-slice-worktrees`; configured
+  roots are canonicalized and recorded. A root must be outside the primary
+  checkout, safely creatable, and free of unrelated directories and registered
+  worktrees.
 - The implementation label fields define the shared state vocabulary:
   ready, in-progress, implemented, blocked, and needs-discovery.
   `automatic_lifecycle` controls whether the skill mutates those labels as it

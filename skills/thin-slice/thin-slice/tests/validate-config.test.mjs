@@ -59,6 +59,23 @@ test("accepts older configurations without the optional worktree setting", async
   assert.equal(result.status, 0, result.stderr);
 });
 
+test("accepts relative and absolute worktree roots", async (t) => {
+  for (const root of [".worktrees", "/tmp/thin-slice-worktrees"]) {
+    const result = await run(t, valid.replace("  use_worktree: false\n", `  use_worktree: true\n  worktree_root: ${root}\n`));
+    assert.equal(result.status, 0, `${root}: ${result.stderr}`);
+  }
+});
+
+test("rejects invalid and empty worktree roots", async (t) => {
+  for (const root of ["true", "[]", ""]) {
+    const line = root === "" ? "  worktree_root: \"\"\n" : `  worktree_root: ${root}\n`;
+    const result = await run(t, valid.replace("  use_worktree: false\n", line));
+    assert.notEqual(result.status, 0);
+    if (root === "") assert.match(result.stderr, /implementation\.worktree_root must not be empty/);
+    else assert.match(result.stderr, /implementation\.worktree_root must be string/);
+  }
+});
+
 test("reports missing, incompatible, and unknown configuration", async (t) => {
   const result = await run(t, "schema: 2\nbranch:\n  pattern: main\nextra: true\n");
   assert.notEqual(result.status, 0);

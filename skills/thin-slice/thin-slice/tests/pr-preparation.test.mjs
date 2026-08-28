@@ -96,3 +96,19 @@ test("implementation defines opt-in worktree creation and safe merged-PR cleanup
     "An open,\nclosed-unmerged",
   ]) assert.ok(text.includes(requirement), `missing worktree rule: ${requirement}`);
 });
+
+test("implementation defines configurable worktree-root safety", async () => {
+  const text = await readFile(implementation, "utf8");
+  for (const requirement of [
+    "implementation.worktree_root",
+    "relative to the canonical primary repository root",
+    "never the caller's current working directory",
+    "<repository-parent>/.thin-slice-worktrees",
+    "configured root",
+    "canonical resolved root",
+    "roots that resolve inside the primary repository",
+    "roots that cannot be created safely",
+    "unrelated directories",
+    "registered-worktree collisions",
+  ]) assert.ok(text.includes(requirement), `missing configurable-root rule: ${requirement}`);
+});
