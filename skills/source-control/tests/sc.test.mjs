@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,10 +24,10 @@ async function fixture(t, scripts) {
   return directory;
 }
 
-function invoke(directory, args) {
+function invoke(directory, args, environment = {}) {
   return spawnSync(process.execPath, [sc, ...args], {
     encoding: "utf8",
-    env: { ...process.env, PATH: `${directory}:${process.env.PATH}` },
+    env: { ...process.env, ...environment, PATH: `${directory}:${process.env.PATH}` },
   });
 }
 
@@ -169,6 +169,107 @@ test("rejects missing body files before invoking a write", async (t) => {
   const result = invoke(directory, ["issue", "create", "--title", "Example", "--body-file", "/definitely/missing"]);
   assert.equal(result.status, 5);
   assert.match(result.stderr, /file not found/);
+});
+
+test("normalizes a Forgejo issue creation with external links in the rendered body", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "issues create" ]; then
+  printf '%s' "$SC_TEST_CREATE_OUTPUT"
+elif [ "$1 $2" = "issues 73" ]; then
+  printf '%s\\n' '[{"index":73,"title":"Build contextual desktop chat","url":"https://forge.example/owner/project/issues/73"}]'
+else exit 99; fi`,
+  });
+  const bodyFile = path.join(directory, "body.md");
+  const body = "Compare [Astryx](https://github.com/facebook/astryx) with [the reference](https://example.com/reference).";
+  await writeFile(bodyFile, body);
+  const createOutput = await readFile(path.join(skillRoot, "tests", "fixtures", "forgejo-issue-create-with-links.txt"), "utf8");
+  const result = invoke(directory, ["issue", "create", "--title", "Build contextual desktop chat", "--body-file", bodyFile], {
+    SC_TEST_CREATE_OUTPUT: createOutput,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "forgejo", operation: "issue.create", repository: "owner/project", number: 73,
+    success: true, url: "https://forge.example/owner/project/issues/73",
+  });
+});
+
+test("rejects missing Forgejo issue-create output", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "issues create" ]; then exit 0;
+else exit 99; fi`,
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["issue", "create", "--title", "Example", "--body-file", bodyFile]);
+  assert.equal(result.status, 8);
+  assert.match(result.stderr, /created issue URL.*missing/i);
+  assert.equal(result.stdout, "");
+});
+
+test("rejects a malformed Forgejo issue-create URL", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "issues create" ]; then printf '%s\\n' 'https://forge.example/owner/project/releases/73';
+else exit 99; fi`,
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["issue", "create", "--title", "Example", "--body-file", bodyFile]);
+  assert.equal(result.status, 8);
+  assert.match(result.stderr, /does not identify an issue in repository owner\/project/);
+  assert.equal(result.stdout, "");
+});
+
+test("rejects ambiguous Forgejo issue-create output", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "issues create" ]; then
+  printf '%s\\n' 'https://forge.example/owner/project/issues/73 https://forge.example/owner/project/issues/74';
+else exit 99; fi`,
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["issue", "create", "--title", "Example", "--body-file", bodyFile]);
+  assert.equal(result.status, 8);
+  assert.match(result.stderr, /expected exactly one URL, found 2/);
+  assert.equal(result.stdout, "");
+});
+
+test("rejects missing, malformed, and ambiguous Forgejo structured creation verification", async (t) => {
+  const cases = [
+    ["missing", "[]", /expected exactly one structured issue, found 0/],
+    ["malformed", "{", /could not normalize issue\.create verification output as JSON/],
+    ["ambiguous", '[{"index":73},{"index":73}]', /expected exactly one structured issue, found 2/],
+  ];
+  for (const [name, verificationOutput, expectedError] of cases) {
+    const directory = await fixture(t, {
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "issues create" ]; then printf '%s\\n' 'https://forge.example/owner/project/issues/73';
+elif [ "$1 $2" = "issues 73" ]; then printf '%s' "$SC_TEST_VERIFY_OUTPUT";
+else exit 99; fi`,
+    });
+    const bodyFile = path.join(directory, "body.md");
+    await writeFile(bodyFile, "Body");
+    const result = invoke(directory, ["issue", "create", "--title", "Example", "--body-file", bodyFile], {
+      SC_TEST_VERIFY_OUTPUT: verificationOutput,
+    });
+    assert.equal(result.status, 8, `${name}: ${result.stderr}`);
+    assert.match(result.stderr, expectedError, name);
+    assert.equal(result.stdout, "", name);
+  }
 });
 
 test("edits a GitHub issue body from a file", async (t) => {

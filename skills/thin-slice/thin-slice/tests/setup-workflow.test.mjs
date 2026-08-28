@@ -7,11 +7,11 @@ test("setup workflow documents confirmation, safety, and evidence gates", async 
   for (const requirement of [
     "two separate\ndecisions",
     "current branch and default branch",
-    "sc label",
+    "pnpm run sc -- label",
     "pnpm run thin-slice:validate-config",
     "pnpm run validate",
     "Commit only `.thin-slice.yml`",
-    "sc pr create",
+    "pnpm run sc -- pr create",
     "default branch tip is unchanged",
     "no unapproved label was created",
   ]) assert.ok(text.includes(requirement), `missing setup guarantee: ${requirement}`);
@@ -41,6 +41,7 @@ test("setup defines cwd-independent local and global path resolution", async () 
     "### Setup path-resolution contract",
     "runtime module URL or equivalent runtime-provided file location",
     "caller's `process.cwd()` is only the target repository",
+    "local | global",
     "A local installation resolves to the repository-local skill installation",
     "A global installation resolves to the globally installed skill directory",
     "independently executable\nfrom the target repository root and from an unrelated working directory",
@@ -54,25 +55,28 @@ test("setup specifies exact script diffs and pnpm verification evidence", async 
   for (const requirement of [
     "exact old value (or",
     "exact new command",
+    "sc:",
+    "pnpm run sc -- provider",
     "new commands must be written only after explicit approval",
-    "resolved skill directory, both exact commands",
+    "resolved skill directory, all three exact commands",
     "target repository, and the invocation context",
-    "both commands through `pnpm` from the target repository root and again from an unrelated working directory",
-    "all four runs complete successfully",
+    "all three commands through `pnpm` from the target repository root and again from an unrelated working directory",
+    "all six runs complete successfully",
     "exit status, and relevant output",
   ]) assert.ok(text.includes(requirement), `missing script verification guarantee: ${requirement}`);
 });
 
-test("setup evidence has normalized records and a four-run success gate", async () => {
+test("setup evidence has normalized records and a six-run success gate", async () => {
   const text = await readFile("skills/thin-slice/thin-slice-setup/SKILL.md", "utf8");
   for (const requirement of [
     "Record each run in normalized evidence",
     "skill_location: absolute installation directory",
     "target_repository: absolute repository directory",
+    "script: sc | validate | thin-slice:validate-config",
     "working_directory: absolute invocation directory",
     "exit_status: numeric status",
     "result: success | failure",
-    "all four records have",
+    "all six records have",
     "setup result is `success` only",
     "setup result blocked",
   ]) assert.ok(text.includes(requirement), `missing evidence guarantee: ${requirement}`);

@@ -1,6 +1,6 @@
 ---
 name: source-control
-version: 1.1.0
+version: 1.1.1
 description: Use Git for local source-control operations and one deterministic command interface for Forgejo and GitHub repository, issue, and pull-request operations. Use when an agent needs to inspect repository state, manage branches, list or view issues and pull requests, read comments or diffs, check CI, create, edit, or close an issue or pull request, comment, or check out a pull request.
 ---
 

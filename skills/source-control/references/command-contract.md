@@ -64,9 +64,17 @@ Common item fields are `number`, `title`, `body`, `state`, `author`, `url`,
 `null` or omitted. Provider-specific response objects are not exposed.
 
 `pr diff` is JSON with a `diff` string. `auth status` contains
-`authenticated`. Create, edit, and comment operations contain `success` and,
-when the native CLI returns one, `url`. Issue close contains `number` and
-`success`.
+`authenticated`. Edit and comment operations contain `success` and, when the
+native CLI returns one, `url`. Issue close contains `number` and `success`.
+
+Forgejo `issue.create` guarantees `number`, `success: true`, and the canonical
+Forgejo `url`. Tea does not expose structured output for issue creation, so the
+wrapper accepts only the final output line as the created URL, validates that
+it identifies an issue in the target repository, and verifies its number,
+title, and URL with a structured issue read before reporting success. Missing,
+malformed, ambiguous, or mismatched output exits with code `8`. GitHub
+`issue.create` preserves the v1 behavior of returning `success` and the native
+URL when available; its issue number is not guaranteed.
 
 ## Exit codes
 

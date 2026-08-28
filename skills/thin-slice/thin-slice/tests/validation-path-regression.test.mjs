@@ -12,7 +12,7 @@ test("validation fixtures distinguish local and global skill installations", asy
     "This contract covers both supported layouts:",
     "A local installation resolves to the repository-local skill installation",
     "A global installation resolves to the globally installed skill directory",
-    "it must not fall back to a\n  repository-local path",
+    "it must not fall back\n  to a repository-local path",
     "runtime module URL or equivalent runtime-provided file location",
     "resolved skill directory",
   ]) {
@@ -25,7 +25,7 @@ test("validation fixtures require execution from an external working directory",
 
   for (const requirement of [
     "target repository root and from an unrelated working directory",
-    "both commands through `pnpm` from the target repository root and again from an unrelated working directory",
+    "all three commands through `pnpm` from the target repository root and again from an unrelated working directory",
     "working_directory: absolute invocation directory",
     "caller\'s `process.cwd()` is only the target repository",
   ]) {

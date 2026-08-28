@@ -228,6 +228,107 @@ function urlFromOutput(text) {
   return text.match(/https?:\/\/[^\s\x00-\x1f\x7f]+/)?.[0] ?? null;
 }
 
+function plainTerminalText(text) {
+  return text
+    .replace(/\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function forgejoIssueIdentity(value, repository, context) {
+  if (!repository || repository.split("/").length !== 2) {
+    fail(EXIT.normalize, `could not normalize ${context}: repository is unavailable or malformed`);
+  }
+
+  let source;
+  try {
+    source = new URL(value);
+  } catch {
+    fail(EXIT.normalize, `could not normalize ${context}: created issue URL is malformed`);
+  }
+
+  const repositoryParts = repository.split("/");
+  const parts = source.pathname.split("/").filter(Boolean);
+  const numberText = parts[repositoryParts.length + 1];
+  const number = Number(numberText);
+  const identifiesIssue = ["http:", "https:"].includes(source.protocol)
+    && !source.username
+    && !source.password
+    && !source.search
+    && !source.hash
+    && parts.length === repositoryParts.length + 2
+    && parts.slice(0, repositoryParts.length).join("/") === repository
+    && parts[repositoryParts.length] === "issues"
+    && /^\d+$/.test(numberText ?? "")
+    && Number.isSafeInteger(number)
+    && number > 0;
+  if (!identifiesIssue) {
+    fail(EXIT.normalize, `could not normalize ${context}: URL does not identify an issue in repository ${repository}`);
+  }
+
+  const url = `${source.origin}/${repository}/issues/${number}`;
+  if (source.href !== url) {
+    fail(EXIT.normalize, `could not normalize ${context}: created issue URL is not canonical`);
+  }
+  return { number, url };
+}
+
+function forgejoCreatedIssueCandidate(output, repository) {
+  const lines = plainTerminalText(output).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    fail(EXIT.normalize, "could not normalize Forgejo issue creation output: created issue URL is missing");
+  }
+
+  const finalLine = lines.at(-1);
+  const urls = [...finalLine.matchAll(/https?:\/\/[^\s\x00-\x1f\x7f]+/g)].map((match) => match[0]);
+  if (urls.length === 0) {
+    fail(EXIT.normalize, "could not normalize Forgejo issue creation output: created issue URL is missing from the final line");
+  }
+  if (urls.length !== 1) {
+    fail(EXIT.normalize, `could not normalize Forgejo issue creation output: expected exactly one URL, found ${urls.length}`);
+  }
+  if (finalLine !== urls[0]) {
+    fail(EXIT.normalize, "could not normalize Forgejo issue creation output: final line must contain only the created issue URL");
+  }
+  return forgejoIssueIdentity(urls[0], repository, "Forgejo issue creation output");
+}
+
+function normalizeForgejoCreatedIssue(output, repository, title, scoped) {
+  const candidate = forgejoCreatedIssueCandidate(output, repository);
+  const verification = parseJson(run("tea", ["issues", String(candidate.number), "--fields", "index,title,url", "--output", "json", ...scoped]).stdout, "issue.create verification");
+  const items = Array.isArray(verification) ? verification : [verification];
+  if (items.length !== 1) {
+    fail(EXIT.normalize, `could not verify Forgejo issue creation: expected exactly one structured issue, found ${items.length}`);
+  }
+
+  const item = items[0];
+  if (!item || typeof item !== "object") {
+    fail(EXIT.normalize, "could not verify Forgejo issue creation: structured issue is malformed");
+  }
+  const verifiedNumber = Number(item.index ?? item.number);
+  if (!Number.isSafeInteger(verifiedNumber) || verifiedNumber < 1 || verifiedNumber !== candidate.number) {
+    fail(EXIT.normalize, "could not verify Forgejo issue creation: structured issue number does not match creation output");
+  }
+  if (item.title !== title) {
+    fail(EXIT.normalize, "could not verify Forgejo issue creation: structured issue title does not match the requested title");
+  }
+  if (typeof item.url !== "string") {
+    fail(EXIT.normalize, "could not verify Forgejo issue creation: structured issue URL is missing or malformed");
+  }
+  const verified = forgejoIssueIdentity(item.url, repository, "Forgejo issue creation verification");
+  if (verified.number !== candidate.number || verified.url !== candidate.url) {
+    fail(EXIT.normalize, "could not verify Forgejo issue creation: structured issue URL does not match creation output");
+  }
+
+  return {
+    provider: "forgejo",
+    operation: "issue.create",
+    repository,
+    number: verified.number,
+    success: true,
+    url: verified.url,
+  };
+}
+
 function normalizeCreatedPullRequest(output, provider, repository, parsed) {
   const urls = [...output.replace(/\x1b\]8;;|\x1b\\|\x07/g, "").matchAll(/https?:\/\/[^\s\x00-\x1f\x7f]+/g)]
     .map((match) => match[0].replace(/[),.;]+$/, ""));
@@ -501,7 +602,7 @@ function forgejo(operation, args, options) {
     const native = ["issues", "create", "--title", parsed.title, "--description", body, ...scoped];
     if (parsed.label.length) native.push("--labels", parsed.label.join(","));
     const result = run("tea", native);
-    emit({ provider: "forgejo", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
+    emit(normalizeForgejoCreatedIssue(result.stdout, repo, parsed.title, scoped));
     return;
   }
   if (operation === "issue.edit") {

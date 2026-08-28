@@ -1,0 +1,8 @@
+#73 Build contextual desktop chat (open)
+
+@operator created 2026-08-27 12:00
+
+Compare [Astryx](https://github.com/facebook/astryx) with the
+[reference design](https://example.com/reference) before implementation.
+
+https://forge.example/owner/project/issues/73

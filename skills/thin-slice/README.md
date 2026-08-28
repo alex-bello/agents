@@ -46,11 +46,18 @@ required labels, a setup branch, configuration commit, and optional PR.
 
 Setup must not install dependencies, enable CI, modify the default branch, or
 create labels without approval. The repository’s canonical validation command
-must be `pnpm run validate`; the config check must be available as:
+must be `pnpm run validate`. Setup also creates package-script entry points for
+source control and configuration validation:
 
 ```sh
+pnpm run sc -- provider
 pnpm run thin-slice:validate-config -- .thin-slice.yml
 ```
+
+When setup runs from repository-local skill source or installation, those
+entries use repository-relative tool paths. When it runs from a global skill
+installation, they use absolute paths to that active installation. The setup
+resolver fails instead of mixing local and global tools.
 
 ### 2. Wayfinder: refine an idea into a specification
 
