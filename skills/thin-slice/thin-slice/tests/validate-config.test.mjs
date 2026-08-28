@@ -15,6 +15,7 @@ branch:
   pattern: thin-slice/{issue-number}-{short-slug}
 implementation:
   create_branch: true
+  use_worktree: false
   commit_reference_required: true
   ready_label: thin-slice-ready
   in_progress_label: thin-slice-in-progress
@@ -48,6 +49,16 @@ test("accepts an optional configured default branch", async (t) => {
   assert.equal(result.status, 0, result.stderr);
 });
 
+test("accepts explicitly enabled worktree mode", async (t) => {
+  const result = await run(t, valid.replace("  use_worktree: false\n", "  use_worktree: true\n"));
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("accepts older configurations without the optional worktree setting", async (t) => {
+  const result = await run(t, valid.replace("  use_worktree: false\n", ""));
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("reports missing, incompatible, and unknown configuration", async (t) => {
   const result = await run(t, "schema: 2\nbranch:\n  pattern: main\nextra: true\n");
   assert.notEqual(result.status, 0);
@@ -64,6 +75,7 @@ branch:
     pattern: thin-slice/{issue-number}-{short-slug}
 implementation:
   create_branch: yes
+  use_worktree: maybe
   commit_reference_required: true
   ready_label: ready
   in_progress_label: progress
@@ -84,6 +96,7 @@ verification:
   assert.match(result.stderr, /labels must be a mapping/);
   assert.match(result.stderr, /nested keys must be indented by two spaces/);
   assert.match(result.stderr, /implementation\.create_branch must be boolean/);
+  assert.match(result.stderr, /implementation\.use_worktree must be boolean/);
 });
 
 test("reports a missing configuration file clearly", () => {

@@ -74,3 +74,25 @@ test("implementation defines configurable post-merge work-item lifecycle", async
     "This reconciliation is idempotent",
   ]) assert.ok(text.includes(requirement), `missing post-merge lifecycle rule: ${requirement}`);
 });
+
+test("implementation defines opt-in worktree creation and safe merged-PR cleanup", async () => {
+  const text = await readFile(implementation, "utf8");
+  for (const requirement of [
+    "implementation.use_worktree",
+    "defaults to `false`",
+    "dedicated Git worktree",
+    "leave the current checkout on\n   its existing branch",
+    "deterministic path outside the repository",
+    "git worktree add",
+    "registered worktree path and branch name",
+    "run all implementation, verification, diff, and commit commands",
+    "git worktree remove <path>",
+    "confirms `merged`",
+    "Check `git status --short`",
+    "Never remove the primary checkout",
+    "delete the\nbranch as part of this cleanup",
+    "or use `--force`",
+    "worktree is dirty",
+    "An open,\nclosed-unmerged",
+  ]) assert.ok(text.includes(requirement), `missing worktree rule: ${requirement}`);
+});

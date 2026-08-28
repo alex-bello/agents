@@ -1,6 +1,6 @@
 ---
 name: thin-slice-setup
-version: 1.2.0
+version: 1.3.0
 description: Inspect a repository and prepare its thin-slice lifecycle configuration, label plan, setup branch, and pull request after explicit confirmation.
 ---
 
@@ -243,6 +243,7 @@ branch:
   pattern: thin-slice/{issue-number}-{short-slug}
 implementation:
   create_branch: true
+  use_worktree: false
   commit_reference_required: true
   ready_label: thin-slice-ready
   in_progress_label: thin-slice-in-progress

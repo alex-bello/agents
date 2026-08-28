@@ -17,7 +17,7 @@ const sections = new Set(["labels", "branch", "implementation", "pull_request", 
 const keys = new Map([
   ["labels", new Set(["mode", "vocabulary", "mappings"])],
   ["branch", new Set(["pattern", "default"])],
-  ["implementation", new Set(["create_branch", "commit_reference_required", "ready_label", "in_progress_label", "implemented_label", "blocked_label", "needs_discovery_label", "automatic_lifecycle"])],
+  ["implementation", new Set(["create_branch", "use_worktree", "commit_reference_required", "ready_label", "in_progress_label", "implemented_label", "blocked_label", "needs_discovery_label", "automatic_lifecycle"])],
   ["pull_request", new Set(["creation", "close_work_item_on_merge"])],
   ["verification", new Set(["require_tests", "require_acceptance_checks", "require_manual_evidence_when_relevant", "reject_unrelated_changes"])],
 ]);
@@ -67,6 +67,7 @@ for (const key of ["labels.mode", "pull_request.creation"]) requireValue(key);
 type("labels.mode", "string"); type("pull_request.creation", "string"); enumValue("labels.mode", ["mapped", "native"]); enumValue("pull_request.creation", ["never", "ask", "automatic"]);
 const bools = ["implementation.create_branch", "implementation.commit_reference_required", "implementation.automatic_lifecycle", "pull_request.close_work_item_on_merge", "verification.require_tests", "verification.require_acceptance_checks", "verification.require_manual_evidence_when_relevant", "verification.reject_unrelated_changes"];
 for (const key of bools) { requireValue(key); type(key, "boolean"); }
+if (values.has("implementation.use_worktree")) type("implementation.use_worktree", "boolean");
 for (const key of ["implementation.ready_label", "implementation.in_progress_label", "implementation.implemented_label", "implementation.blocked_label", "implementation.needs_discovery_label"]) { const value = requireValue(key); type(key, "string"); if (typeof value === "string" && !value.trim()) error(1, `${key} must not be empty`); }
 if (errors.length) {
   console.error(`Invalid ${file}:\n${errors.map((item) => `- ${item}`).join("\n")}`);

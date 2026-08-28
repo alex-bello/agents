@@ -1,6 +1,6 @@
 ---
 name: thin-slice-implement
-version: 1.2.0
+version: 1.3.0
 description: Implement exactly one thin-slice work issue from its specification, verify it, manage its lifecycle labels, and optionally open a pull request. Use when explicitly asked to implement an issue or when a thin-slice issue is selected by its configured ready label.
 ---
 
@@ -32,6 +32,7 @@ Expected implementation settings include:
 ```yaml
 implementation:
   create_branch: true
+  use_worktree: false
   commit_reference_required: true
   ready_label: thin-slice-ready
   in_progress_label: thin-slice-in-progress
@@ -43,6 +44,11 @@ pull_request:
   creation: ask # never | ask | automatic
   close_work_item_on_merge: false
 ```
+
+`implementation.use_worktree` is optional for backward compatibility and
+defaults to `false` when omitted. When `true`, implementation happens in a
+dedicated Git worktree for the issue's branch; the primary checkout remains
+untouched. It does not change the branch naming or pull-request policy.
 
 ## Preconditions
 
@@ -126,15 +132,31 @@ operation; do not use a provider branch API or a provider-specific CLI.
    trailing hyphens are removed, and the result is limited to  fifty
    characters. Reject an empty slug or a rendered branch name that is not a
    valid Git ref instead of guessing a name.
-4. Read the current branch and worktree immediately before mutation. If the
+4. Read the current branch and worktree immediately before mutation. If
+   `implementation.use_worktree` is `false`, use the current checkout: if the
    rendered branch already exists locally, check it out only when it points to
    the current `HEAD` or has no commits ahead of the current base; otherwise
    stop and report the collision. If it does not exist, create it from the
    current `HEAD` and check it out. Verify the resulting branch name before
    continuing.
-5. Only after successful checkout, apply optional lifecycle labels and begin
-   implementation. If any Git operation fails, preserve the worktree and
-   report the failure without claiming the branch was created or checked out.
+
+   If `implementation.use_worktree` is `true`, leave the current checkout on
+   its existing branch and create a separate worktree for the rendered branch.
+   Use a deterministic path outside the repository, by default
+   `<repository-parent>/.thin-slice-worktrees/<repository-name>/<issue-number>-<short-slug>`.
+   The target path must not already contain an unrelated directory or
+   registered worktree. If the branch does not exist, create both the branch
+   and worktree from the current `HEAD` with `git worktree add`; if the branch
+   already exists, attach it only when it has no commits ahead of the current
+   base and the target path is unused. Refuse branch or path collisions rather
+   than guessing, and verify the registered worktree path and branch name.
+5. Only after the branch or worktree operation succeeds, apply optional
+   lifecycle labels and begin implementation. When worktree mode is enabled,
+   run all implementation, verification, diff, and commit commands from the
+   isolated worktree and record its absolute path; do not accidentally modify
+   the primary checkout. If any Git operation fails, preserve the existing
+   worktree(s) and report the failure without claiming the branch or worktree
+   was created or checked out.
 
 6. If lifecycle automation is enabled, add the in-progress label, remove the
    ready label using `sc issue edit <issue-number> --add-label <label>` and
@@ -271,6 +293,18 @@ After a pull request has been opened, reconcile its state with
 `skills/source-control/scripts/sc pr view <pr-number>` before reporting the
 work item as complete. Treat the normalized PR state as authoritative:
 
+When `implementation.use_worktree` is `true`, a merged PR is also the gate for
+local worktree cleanup. After `sc pr view` confirms `merged`, verify that the
+PR head is the expected implementation branch and that the recorded absolute
+path is the registered worktree for that branch. Check `git status --short`
+inside that worktree. If it is clean, remove only that worktree with
+`git worktree remove <path>` from the primary repository, then verify that the
+path and registration are gone. Never remove the primary checkout, delete the
+branch as part of this cleanup, or use `--force`. If the worktree is dirty,
+the path/branch cannot be matched, or removal/verification fails, preserve it
+and report the exact cleanup blocker; do not claim cleanup succeeded. An open,
+closed-unmerged, or otherwise unconfirmed PR never permits worktree removal.
+
 - If the PR is merged and `pull_request.close_work_item_on_merge` is `true`,
   apply the configured `implemented_label`, remove the configured
   `in_progress_label` (and any configured `ready_label`), then close the
@@ -305,6 +339,8 @@ be reported as a provider mutation failure.
   `thin-slice-blocked` when enabled and stop.
 - Provider mutation failure: preserve the worktree and never claim a lifecycle
   transition occurred.
+- Worktree cleanup failure: preserve the worktree and report the exact path,
+  observed state, and safe follow-up action; never force-remove it.
 
 The lifecycle fixture must cover ready, in-progress, implemented, discovery,
 and blocked states, and must assert exact normalized labels after successful

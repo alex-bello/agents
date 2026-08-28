@@ -171,6 +171,7 @@ branch:
   pattern: thin-slice/{issue-number}-{short-slug}
 implementation:
   create_branch: true
+  use_worktree: false
   commit_reference_required: true
   ready_label: thin-slice-ready
   in_progress_label: thin-slice-in-progress
@@ -197,8 +198,11 @@ verification:
   become the decimal issue number and a lowercase, hyphenated title slug
   limited to 50 characters.
 - `implementation.create_branch` controls whether implementation prepares a
-  dedicated branch. `commit_reference_required` requires every implementation
-  commit after the branch base to mention the selected issue number.
+  dedicated branch. `implementation.use_worktree` controls whether that
+  branch is implemented in a separate Git worktree, defaulting to `false` for
+  existing configurations. `commit_reference_required` requires every
+  implementation commit after the branch base to mention the selected issue
+  number.
 - The implementation label fields define the shared state vocabulary:
   ready, in-progress, implemented, blocked, and needs-discovery.
   `automatic_lifecycle` controls whether the skill mutates those labels as it
@@ -224,6 +228,7 @@ The lifecycle creates or relies on these artifacts:
 | Child work issue | Planning, on selection | One implementation contract and provenance chain |
 | Discovery comment | Planning or implementation | New work tied to its original group and item |
 | Implementation branch | Implement | Isolated change named from issue and title |
+| Implementation worktree | Implement | Optional separate checkout removed after confirmed PR merge |
 | Commit(s) | Implement/repository workflow | Verifiable code changes referencing the issue when required |
 | Pull request | Implement, if enabled | Review, acceptance evidence, and merge boundary |
 | Audit report | Audit | Read-only traceability and repair findings |
