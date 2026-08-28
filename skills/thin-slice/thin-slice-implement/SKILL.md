@@ -152,7 +152,6 @@ operation; do not use a provider branch API or a provider-specific CLI.
    canonical resolved root, and canonical worktree path. Reject non-string or
    empty roots, roots that resolve inside the primary repository, roots that
    cannot be created safely, unrelated directories at the target, and
-   The safety check must reject roots that cannot be created safely and
    registered-worktree collisions before mutation. If the branch does not
    exist, create both the branch and worktree from the current `HEAD` with
    `git worktree add`; if the branch already exists, attach it only when it has
@@ -165,6 +164,40 @@ operation; do not use a provider branch API or a provider-specific CLI.
    the primary checkout. If any Git operation fails, preserve the existing
    worktree(s) and report the failure without claiming the branch or worktree
    was created or checked out.
+
+### Cross-platform path contract
+
+Path handling is a safety boundary, not string manipulation. Use the runtime's
+path implementation (`path.posix` or `path.win32` as selected by the target
+platform) for parsing, joining, resolving, and relative-path checks; never
+split on `/`, assume `path.sep` is `/`, or compare unnormalized strings.
+Before comparing paths, normalize separators accepted by the target platform,
+collapse `.` and `..` segments without escaping a root, and canonicalize the
+existing portion with `realpath`. For a not-yet-created target, canonicalize
+its nearest existing parent and append the remaining relative segments.
+
+On POSIX, preserve case because mounts may be case-sensitive. On Windows,
+compare drive letters, UNC server/share roots, and path components using the
+platform's case-insensitive rules; retain the original spelling for diagnostics.
+Drive-relative paths (for example `C:worktree`) are not absolute and must be
+rejected. UNC paths must retain their server/share root, and a drive root or
+UNC share root must never be treated as an implementation worktree target.
+Trailing separators and equivalent separator spellings must produce one
+comparison form, while branch names remain independent Git refs and continue
+to use the existing deterministic slug contract.
+The safety check must reject roots that cannot be created safely before any Git
+mutation.
+
+Containment is checked with the selected runtime path module's `relative`
+operation: a candidate is contained only when it is equal to the primary path
+or has a relative result that is neither absolute nor prefixed by `..` plus the
+platform separator. Apply this check after canonicalization so symlinked paths,
+case variants on case-insensitive filesystems, and alternate separator forms
+cannot bypass it. Apply the same canonical comparison to the resolved worktree
+root, target path, and every registered `git worktree list --porcelain` path.
+If the target platform cannot interpret a supplied root or path format, fail
+with the platform and observed path in an actionable diagnostic; do not fall
+back to POSIX semantics.
 
 6. If lifecycle automation is enabled, add the in-progress label, remove the
    ready label using `sc issue edit <issue-number> --add-label <label>` and
