@@ -44,3 +44,24 @@ test("audit runs a blocking validation preflight before lifecycle discovery", as
     "Validation preflight:",
   ]) assert.ok(text.includes(requirement), `missing validation preflight guarantee: ${requirement}`);
 });
+
+test("audit classifies registered worktrees and preserves unsafe state", async () => {
+  const text = await readFile(skill, "utf8");
+  for (const requirement of [
+    "git worktree list --porcelain",
+    "git status --short",
+    "canonical absolute path",
+    "`active`",
+    "`clean-and-merged`",
+    "`dirty`",
+    "`unmerged`",
+    "`orphaned`",
+    "`missing`",
+    "`unverifiable`",
+    "git worktree remove <canonical-path>",
+    "Never use `--force`",
+    "## Deterministic worktree fixtures",
+    "unavailable-provider",
+    "unchanged primary checkout",
+  ]) assert.ok(text.includes(requirement), `missing worktree audit guarantee: ${requirement}`);
+});

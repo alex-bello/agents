@@ -1,6 +1,6 @@
 ---
 name: thin-slice-audit
-version: 1.0.0
+version: 1.1.0
 description: Audit a repository's thin-slice lifecycle records and report orphaned trackers, work items, branches, commits, and pull requests with actionable repair guidance. Use when traceability needs checking or lifecycle records may be stale or broken.
 ---
 
@@ -11,6 +11,10 @@ Produce a read-only, evidence-backed report for the lifecycle represented by
 branches, commits, pull requests, or configuration. Use `source-control` for
 provider operations and Git for local repository inspection; never call
 `gh`, `tea`, a raw API, or a provider connector directly.
+
+The audit is also responsible for registered implementation worktrees. It
+must classify each worktree without changing its contents, registration,
+branch, or the primary checkout.
 
 ## Preconditions
 
@@ -70,6 +74,54 @@ traceability reference. Resolve branch and commit state locally with Git, and
 resolve PR number, URL, base, head, and state with `source-control`. A missing
 provider capability is a finding, not proof that a record is orphaned.
 
+### Registered worktree inventory
+
+After the validation preflight, enumerate the repository's registered
+worktrees with:
+
+```sh
+git worktree list --porcelain
+```
+
+For every record, retain its canonical absolute path, branch (or detached
+state), HEAD, and whether it is the primary checkout. For each non-primary
+record, run `git status --short` from that worktree and compare its canonical
+path and branch with the deterministic implementation branch/path expected by
+the work-item contract. A missing path, unreadable status, detached HEAD,
+branch collision, or path/branch mismatch is evidence to classify, not a
+reason to remove or repair the record.
+
+Correlate a candidate implementation worktree to a work item only after
+checking the issue's parsed provenance and the local branch pattern. Do not
+use a branch name, directory name, or PR title as a substitute for an issue
+or source-tracker reference. When provider data is unavailable, preserve the
+local evidence and classify the lifecycle correlation as `unverifiable`.
+
+Classify each registered implementation worktree exactly once using the
+strongest applicable state:
+
+- `active`: canonical path exists, branch and path match the work item, the
+  worktree is readable, and its lifecycle is open or otherwise in progress;
+- `clean-and-merged`: the matching worktree is clean and its expected PR is
+  authoritatively confirmed merged;
+- `dirty`: the matching worktree has any tracked, staged, or untracked local
+  change, regardless of PR state;
+- `unmerged`: the matching worktree is clean but its PR is open, closed without
+  merge, or has no confirmed merge evidence;
+- `orphaned`: the worktree or branch has no valid matching work-item record,
+  or its lifecycle record is broken;
+- `missing`: the recorded canonical path does not exist or is no longer
+  registered;
+- `unverifiable`: required local or provider evidence could not be obtained;
+
+Report the exact path, branch, HEAD, status output, matched issue/tracker (if
+any), PR state (if available), and one safe follow-up for every record. A
+`clean-and-merged` record may recommend `git worktree remove <canonical-path>`
+after an operator confirms the evidence, but the audit must never execute that
+command. Never use `--force`, delete the implementation branch, or treat a
+dirty, mismatched, open, closed-unmerged, missing, or unverifiable record as
+safe to remove.
+
 ## Findings
 
 Report one finding per broken relationship. At minimum check:
@@ -90,6 +142,13 @@ Report one finding per broken relationship. At minimum check:
 - each tracker, work item, branch, commit, and PR belongs to at most one
   lifecycle chain unless the record explicitly documents a supported
   relationship.
+- every registered implementation worktree is classified as `active`,
+  `clean-and-merged`, `dirty`, `unmerged`, `orphaned`, `missing`, or
+  `unverifiable`, with its canonical path, branch, status, and lifecycle
+  evidence;
+- a clean worktree is recommended for manual cleanup only when its matching PR
+  is confirmed merged, while all unsafe or incomplete states preserve the
+  worktree and identify the blocker.
 
 Classify each finding as `missing`, `invalid`, `mismatched`, `duplicate`, or
 `unverifiable`. Include the record identifier, observed evidence, expected
@@ -118,6 +177,11 @@ Findings
   Evidence: <issue URL and relevant field/metadata>
   Repair: <one concrete action>
 
+Worktrees
+- [clean-and-merged] <canonical path> → branch ... → issue #45 → PR #67 (merged)
+  Evidence: status clean; registered path and branch match; PR state confirmed merged
+  Repair: after review, an operator may run `git worktree remove <canonical-path>`
+
 Healthy chains
 - tracker #123 → issue #45 → branch ... → commits ... → PR #67 (merged)
 
@@ -126,10 +190,24 @@ Unverifiable checks
 ```
 
 Sort findings by issue number, then relationship (`tracker`, `issue`,
-`branch`, `commit`, `pull-request`), then identifier. Sort healthy chains by
-tracker number. Use `0 findings` explicitly for a clean audit. Distinguish
+`branch`, `worktree`, `commit`, `pull-request`), then identifier. Sort
+worktrees by canonical absolute path and healthy chains by tracker number. Use
+`0 findings` explicitly for a clean audit. Distinguish
 “no records found” from “all records are healthy”, and do not claim complete
 coverage when provider or Git evidence was unavailable.
+
+## Deterministic worktree fixtures
+
+Focused fixtures must use isolated temporary Git repositories and a stubbed
+normalized provider response; they must not call a live provider or mutate the
+repository under audit. Cover at least healthy active, clean-and-merged,
+dirty, unmerged, orphaned, missing-path, and unavailable-provider cases. Each
+fixture must assert the canonical path, branch, classification, observed
+status, safe follow-up, and unchanged primary checkout. The merged case must
+assert that the report contains `git worktree remove` as guidance while the
+fixture's registered worktree and branch remain until the test performs any
+explicit teardown. Refusal cases must assert that no force-removal command is
+used and that the registered worktree remains available.
 
 The report is the only output mutation: do not add labels, comments, issues,
 commits, or pull requests. Preserve enough URLs, numbers, SHAs, branch names,
