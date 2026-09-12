@@ -3,13 +3,32 @@
 Thin-slice is a planning and delivery framework for turning an idea into a
 complete, verifiable outcome through small increments. “Thin” applies to every
 work item and commit: each increment should have one primary purpose, a clear
-completion boundary, useful observable behavior or an independently testable
-seam, and a maintainer-sized review and rollback surface.
+completion boundary, useful observable behavior, and a maintainer-sized review
+and rollback surface. An independently testable internal seam is reserved for
+an explicitly justified enabling item.
 
 The framework preserves the whole product intent before delivery is divided.
 It does not mean “build a throwaway prototype” or “make the first issue as
-small as possible.” The first increment must still include a real input, the
-core behavior, a usable result, and a way to demonstrate it.
+small as possible.” A normal work item is a thin vertical slice: one narrow
+user-visible outcome through every relevant layer. It must include a real
+input, the core behavior, any required state or persistence, a usable result,
+and a way to demonstrate the complete path. A table, model, endpoint, UI shell,
+or test harness by itself is not a product slice.
+
+### The vertical-slice rule
+
+Judge size by the breadth of the outcome, not by the number of files or
+technical layers. Combine tightly coupled layers when separating them would
+leave a misleading intermediate state. If a small behavior is being split
+into seven or eight work items, revisit the boundaries and make the first
+behavior own its complete path. Keep separate outcomes, independent release or
+revert boundaries, and materially different risks separate.
+
+Layer-only work is allowed only as an explicitly justified enabling exception:
+the contract must say `delivery: enabling`, explain why the behavior cannot
+ship safely in the same change, provide meaningful verification, and name the
+immediate dependent behavior. Enabling work is a prerequisite, not a completed
+product slice.
 
 ## The lifecycle
 
@@ -100,6 +119,8 @@ one child for each unchecked item in original order.
 Every child must be independently understandable outside the tracker. Its
 contract includes objective, context, scope, behavior, acceptance criteria,
 verification, non-goals, dependencies, risks/exceptions, and rollback notes.
+It also includes a vertical slice contract with the user outcome, complete
+path, end-to-end acceptance check, and delivery classification.
 The child also carries exact provenance linking it back to the tracker, group,
 and source item. Invalid or ambiguous selection, missing configuration, or
 failed provenance stops creation before mutation.
@@ -109,8 +130,11 @@ failed provenance stops creation before mutation.
 `thin-slice-implement` processes exactly one work item. It validates the
 configuration and provenance, checks dependencies, checks the worktree, and
 only then creates or checks out the deterministic implementation branch. It
-implements the smallest complete behavior, runs issue and repository checks,
-reviews the diff, and records evidence.
+implements the smallest complete behavior across the relevant production
+layers, runs issue and repository checks, verifies the user-facing boundary,
+reviews the diff, and records evidence. A layer-only or non-demonstrable issue
+is sent back for contract upgrade unless it is an explicitly justified
+`delivery: enabling` item.
 
 It supports `implement`, `pr`, and `upgrade` modes. Upgrade enriches an
 underspecified issue without changing code. In PR mode, the generated body

@@ -77,12 +77,21 @@ untouched. It does not change the branch naming or pull-request policy.
 
 Prefer work items containing `Objective`, `Context`, `Scope`, `Detailed
 behavior`, `Acceptance criteria`, `Verification`, `Non-goals`, `Dependencies`,
-`Risks and exceptions`, and `Rollback notes` sections. If an issue lacks enough
-information to determine completion, use `upgrade` mode to propose an enriched
-body and review state; do not implement during an upgrade. Preserve the
-original issue content, show the proposed replacement or append an explicit
-specification comment, and require confirmation before rewriting an externally
-visible issue body. If the issue remains underspecified, apply
+`Risks and exceptions`, and `Rollback notes` sections. A normal work item must
+also contain a vertical slice contract naming one user outcome, the complete
+path from input to observable result, and an end-to-end acceptance check. If
+the contract only names a table, migration, model, endpoint, UI shell, test
+fixture, or other internal seam, use `upgrade` mode to combine it with the
+smallest behavior that makes it useful; do not implement a layer-only issue.
+The only exception is an explicitly marked `delivery: enabling` item whose
+contract states why the behavior cannot safely ship with it, how the enabling
+change is verified, and which immediate behavior depends on it. Enabling work
+is not a completed product slice. If an issue lacks enough information to
+determine completion, use `upgrade` mode to propose an enriched body and
+review state; do not implement during an upgrade. Preserve the original issue
+content, show the proposed replacement or append an explicit specification
+comment, and require confirmation before rewriting an externally visible
+issue body. If the issue remains underspecified, apply
 `thin-slice-needs-discovery`; if it is ready for review, apply
 `thin-slice-review` and remove `thin-slice-needs-discovery` when lifecycle
 automation is enabled.
@@ -217,7 +226,13 @@ back to POSIX semantics.
    A child with invalid provenance is not an implementation candidate: stop
    without changing code, report every diagnostic, and request correction of
    the child body or its originating tracker.
-8. Implement the smallest complete behavior in scope. For a valid
+   Confirm again that the checklist has one user-visible outcome and a
+   complete path to the observable boundary. If it does not, stop before code
+   changes with `thin-slice-needs-discovery` or use `upgrade` mode to repair
+   the contract; do not quietly implement only the easiest technical layer.
+8. Implement the smallest complete behavior in scope. Carry the path through
+   every relevant production layer in the same change, including persistence
+   and user feedback when the behavior requires them. Verify at the user or operator boundary, not only with a unit test of an internal seam. For a valid
    `delivery: discovery-only` item, produce and review the specified
    documentation deliverable instead of changing application source. Do not
    pull deferred work into the change.
@@ -242,9 +257,8 @@ back to POSIX semantics.
    expected the commit subject or body to reference implementation issue #42
    (for example, "Implement parser (#42)").` Emit one actionable diagnostic
    per offending commit, including its short SHA and observed subject; stop
-   before creating a commit or pull request until all diagnostics are resolved.
-   Unrelated commits before the recorded base are excluded from this check. If
-   the setting is false, skip this gate and state that it was disabled in the
+   Stop before creating a commit or pull request until all diagnostics are resolved.
+   Unrelated commits before the recorded base are excluded from this check. If the setting is false, skip this gate and state that it was disabled in the
    report.
 12. In `pr` mode, require at least one commit after the recorded branch base.
    An empty implementation range is an actionable failure: `PR mode requires
@@ -252,8 +266,8 @@ back to POSIX semantics.
    validate a commit before push or PR creation.` In `pr` mode, reject any
    staged or unstaged changes, including untracked files, before push or PR
    preparation, and report the paths that must be committed or removed. These
-   preconditions run before any push or `sc pr create` mutation. In `implement`
-   mode, implementation may finish with uncommitted changes only when no commit
+   preconditions run before push or `sc pr create` mutation. In `implement` mode,
+   implementation may finish with uncommitted changes only when no commit
    is required by repository policy or configuration; report that state clearly
    and do not imply that a PR is ready.
 13. If additional work is low-risk and reversible, include only what is needed
@@ -374,6 +388,10 @@ be reported as a provider mutation failure.
   changes: stop without mutation and report the condition.
 - Missing requirements: apply `thin-slice-needs-discovery` when enabled, add a
   comment describing the exact gap, and stop.
+- Layer-only or non-demonstrable scope: preserve the issue without changing
+  code, apply `thin-slice-needs-discovery` when enabled, and require an
+  upgraded contract that either includes the dependent user behavior or
+  explicitly justifies `delivery: enabling`.
 - Verification failure: keep `thin-slice-in-progress`, record commands and
   failures, and do not open a PR unless explicitly authorized.
 - Dangerous or breaking change without a clear issue exception: apply
