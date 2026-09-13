@@ -410,7 +410,7 @@ test("normalizes a GitHub pull-request creation identity", async (t) => {
   });
 });
 
-test("normalizes a Forgejo issue URL as a pull request URL", async (t) => {
+test("rejects a Forgejo issue URL as a pull request URL", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
     tea: 'if [ "$1" = "logins" ]; then printf "[{\\"url\\":\\"https://forge.example\\"}]\\n"; else printf "%s\\n" "https://forge.example/owner/project/issues/13"; fi',
@@ -418,9 +418,68 @@ test("normalizes a Forgejo issue URL as a pull request URL", async (t) => {
   const bodyFile = path.join(directory, "body.md");
   await writeFile(bodyFile, "Body");
   const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature", "--title", "Feature", "--body-file", bodyFile]);
+  assert.equal(result.status, 8);
+  assert.match(result.stderr, /no canonical pull-request URL found/);
+  assert.equal(result.stdout, "");
+});
+
+test("normalizes one Forgejo PR URL while ignoring body and tracker URLs", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "pulls create" ]; then printf '%b' "$SC_TEST_CREATE_OUTPUT";
+else exit 99; fi`,
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body with https://github.com/owner/project/issues/123");
+  const createOutput = await readFile(path.join(skillRoot, "tests", "fixtures", "forgejo-pr-create-with-links.txt"), "utf8");
+  const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature", "--title", "Feature", "--body-file", bodyFile], {
+    SC_TEST_CREATE_OUTPUT: createOutput,
+  });
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(JSON.parse(result.stdout).url, "https://forge.example/owner/project/pulls/13");
-  assert.equal(JSON.parse(result.stdout).number, 13);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "forgejo", operation: "pr.create", repository: "owner/project", success: true,
+    number: 126, url: "https://forge.example/owner/project/pulls/126", title: "Feature", base: "main", head: "feature", state: "open",
+  });
+});
+
+test("deduplicates repeated copies of the same pull-request URL", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'printf "%s\\n" "https://github.com/owner/project/pull/12 https://github.com/owner/project/pull/12"',
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature", "--title", "Feature", "--body-file", bodyFile]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).url, "https://github.com/owner/project/pulls/12");
+});
+
+test("normalizes PR URLs with trailing punctuation and ANSI hyperlinks", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'printf "%b" "$SC_TEST_CREATE_OUTPUT"',
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature", "--title", "Feature", "--body-file", bodyFile], {
+    SC_TEST_CREATE_OUTPUT: "\\033]8;;https://github.com/owner/project/pull/12\\007https://github.com/owner/project/pull/12\\033]8;;\\007.\\n",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).number, 12);
+});
+
+test("prefers a structured PR URL over URLs in structured body fields", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: `printf '%s\\n' '{"url":"https://github.com/owner/project/pull/15","body":"See https://github.com/owner/project/issues/123"}'`,
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature", "--title", "Feature", "--body-file", bodyFile]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).number, 15);
 });
 
 test("qualifies Forgejo slash-containing heads for Tea", async (t) => {
@@ -458,13 +517,29 @@ else printf '%s\\n' 'The target could not be found' >&2; exit 1; fi`,
 test("rejects ambiguous pull-request creation responses", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "git@github.com:owner/project.git"',
-    gh: 'printf "%s\\n" "https://github.com/owner/project/pulls/12 https://github.com/owner/project/pulls/13"',
+    gh: 'printf "%s\\n" "https://github.com/owner/project/pull/12 https://github.com/owner/project/pull/13"',
   });
   const bodyFile = path.join(directory, "body.md");
   await writeFile(bodyFile, "Body");
   const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature", "--title", "Feature", "--body-file", bodyFile]);
   assert.equal(result.status, 8);
-  assert.match(result.stderr, /expected exactly one URL/);
+  assert.match(result.stderr, /ambiguous canonical pull-request URLs/);
+  assert.match(result.stderr, /pulls\/12/);
+  assert.match(result.stderr, /pulls\/13/);
+  assert.equal(result.stdout, "");
+});
+
+test("rejects native PR creation output with no usable PR URL", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'printf "%s\\n" "Created from https://github.com/owner/project/issues/12 and https://example.com/tracker/12"',
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "Body");
+  const result = invoke(directory, ["pr", "create", "--base", "main", "--head", "feature", "--title", "Feature", "--body-file", bodyFile]);
+  assert.equal(result.status, 8);
+  assert.match(result.stderr, /no canonical pull-request URL found/);
+  assert.equal(result.stdout, "");
 });
 
 test("closes a GitHub issue", async (t) => {

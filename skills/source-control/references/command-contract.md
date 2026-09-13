@@ -76,6 +76,16 @@ malformed, ambiguous, or mismatched output exits with code `8`. GitHub
 `issue.create` preserves the v1 behavior of returning `success` and the native
 URL when available; its issue number is not guaranteed.
 
+`pr.create` returns the requested title, base, head, `state: "open"`, PR number,
+and canonical `/pulls/<number>` URL. When native provider output is structured,
+the wrapper uses its URL fields; otherwise it filters printed URLs to the target
+repository's canonical PR routes on the detected provider host. GitHub accepts
+`/pull/<number>`; Forgejo accepts `/pull/<number>` and `/pulls/<number>`. Issue,
+tracker, comparison, documentation, and body URLs are ignored. Duplicate copies
+of one canonical PR URL are accepted, while no usable candidate or multiple
+distinct PR candidates exits with code `8`. The wrapper does not retry the
+native create operation after a normalization failure.
+
 ## Exit codes
 
 | Code | Meaning | Recovery |

@@ -1,0 +1,3 @@
+Pull request created: https://forge.example/owner/project/pulls/126.
+Related issue: https://forge.example/owner/project/issues/123
+Tracker: https://tracker.example/tickets/115

@@ -234,6 +234,49 @@ function plainTerminalText(text) {
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 }
 
+function extractOutputUrls(text) {
+  const urls = [];
+  for (const candidateText of [text, plainTerminalText(text)]) {
+    for (const match of candidateText.matchAll(/https?:\/\/[^\s\x00-\x1f\x7f]+/g)) {
+      urls.push(match[0].replace(/[),.;:!?\]}>'"`]+$/, ""));
+    }
+  }
+  return [...new Set(urls)];
+}
+
+function structuredOutputUrls(output) {
+  const urls = [];
+  let foundStructuredOutput = false;
+  const structuredUrlFields = new Set(["url", "html_url", "web_url"]);
+
+  function collect(value, key = null) {
+    if (typeof value === "string" && structuredUrlFields.has(key)) {
+      urls.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) collect(item);
+      return;
+    }
+    if (value && typeof value === "object") {
+      for (const [childKey, childValue] of Object.entries(value)) collect(childValue, childKey);
+    }
+  }
+
+  for (const candidate of [output.trim(), ...output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)]) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object") {
+        collect(parsed);
+        foundStructuredOutput = true;
+      }
+    } catch {
+      // Native CLIs normally print a plain URL; URL filtering handles that path.
+    }
+  }
+  return { foundStructuredOutput, urls: [...new Set(urls)] };
+}
+
 function forgejoIssueIdentity(value, repository, context) {
   if (!repository || repository.split("/").length !== 2) {
     fail(EXIT.normalize, `could not normalize ${context}: repository is unavailable or malformed`);
@@ -329,35 +372,64 @@ function normalizeForgejoCreatedIssue(output, repository, title, scoped) {
   };
 }
 
-function normalizeCreatedPullRequest(output, provider, repository, parsed) {
-  const urls = [...output.replace(/\x1b\]8;;|\x1b\\|\x07/g, "").matchAll(/https?:\/\/[^\s\x00-\x1f\x7f]+/g)]
-    .map((match) => match[0].replace(/[),.;]+$/, ""));
-  const uniqueUrls = [...new Set(urls)];
-  if (uniqueUrls.length !== 1) {
-    fail(EXIT.normalize, `could not normalize pull-request creation output: expected exactly one URL, found ${uniqueUrls.length}`);
-  }
-
+function pullRequestIdentity(value, provider, repository, expectedHost) {
   let source;
   try {
-    source = new URL(uniqueUrls[0]);
+    source = new URL(value);
   } catch {
-    fail(EXIT.normalize, "could not normalize pull-request creation output: URL is malformed");
+    return null;
   }
-  const parts = source.pathname.replace(/\/$/, "").split("/").filter(Boolean);
+
+  const parts = source.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
   const repositoryParts = repository.split("/");
   const kind = parts[repositoryParts.length];
-  const number = parts[repositoryParts.length + 1];
-  if (parts.length !== repositoryParts.length + 2 || parts.slice(0, repositoryParts.length).join("/") !== repository || !["issues", "pull", "pulls"].includes(kind) || !/^\d+$/.test(number) || Number(number) < 1) {
-    fail(EXIT.normalize, "could not normalize pull-request creation output: URL does not identify a pull request in the repository");
+  const numberText = parts[repositoryParts.length + 1];
+  const allowedKinds = provider === "github" ? ["pull"] : ["pull", "pulls"];
+  if (!["http:", "https:"].includes(source.protocol)
+    || (expectedHost && source.hostname.toLowerCase() !== expectedHost.toLowerCase())
+    || source.username
+    || source.password
+    || source.search
+    || source.hash
+    || parts.length !== repositoryParts.length + 2
+    || parts.slice(0, repositoryParts.length).join("/") !== repository
+    || !allowedKinds.includes(kind)
+    || !/^\d+$/.test(numberText ?? "")) {
+    return null;
   }
+
+  const number = Number(numberText);
+  if (!Number.isSafeInteger(number) || number < 1) return null;
+  return {
+    number,
+    url: `https://${source.host}/${repository}/pulls/${number}`,
+  };
+}
+
+function normalizeCreatedPullRequest(output, provider, repository, parsed, expectedHost = null) {
+  const structured = structuredOutputUrls(output);
+  const urls = structured.foundStructuredOutput ? structured.urls : extractOutputUrls(output);
+  const candidates = [...new Map(urls
+    .map((url) => pullRequestIdentity(url, provider, repository, expectedHost))
+    .filter(Boolean)
+    .map((candidate) => [candidate.url, candidate])).values()];
+
+  if (candidates.length === 0) {
+    fail(EXIT.normalize, `could not normalize pull-request creation output: no canonical pull-request URL found for repository ${repository}`);
+  }
+  if (candidates.length > 1) {
+    fail(EXIT.normalize, `could not normalize pull-request creation output: ambiguous canonical pull-request URLs: ${candidates.map((candidate) => candidate.url).join(", ")}`);
+  }
+
+  const { number, url } = candidates[0];
 
   return {
     provider,
     operation: "pr.create",
     repository,
     success: true,
-    number: Number(number),
-    url: `${source.origin}/${repository}/pulls/${number}`,
+    number,
+    url,
     title: parsed.title,
     base: parsed.base,
     head: parsed.head,
@@ -516,7 +588,7 @@ function github(operation, args, options) {
     if (parsed.draft) native.push("--draft");
     for (const label of parsed.label) native.push("--label", label);
     const result = run("gh", native);
-    emit(normalizeCreatedPullRequest(result.stdout, "github", repo, parsed));
+    emit(normalizeCreatedPullRequest(result.stdout, "github", repo, parsed, hostFromRemote(remoteUrl(options.remote))));
     return;
   }
   if (operation === "pr.checkout") {
@@ -677,7 +749,7 @@ function forgejo(operation, args, options) {
       if (result.stderr) process.stderr.write(result.stderr);
       fail(EXIT.native, `tea command failed with exit code ${result.status ?? "unknown"} while creating PR from base "${parsed.base}" to head "${parsed.head}" in repository "${repo}"; native command: ${nativeCommand("tea", native)}`);
     }
-    emit(normalizeCreatedPullRequest(result.stdout, "forgejo", repo, parsed));
+    emit(normalizeCreatedPullRequest(result.stdout, "forgejo", repo, parsed, hostFromRemote(remoteUrl(options.remote))));
     return;
   }
   if (operation === "pr.checkout") {
