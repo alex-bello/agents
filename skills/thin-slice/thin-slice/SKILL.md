@@ -10,7 +10,10 @@ Fully refine the idea enough to expose its user value, essential behavior,
 constraints, risks, and meaningful follow-up work. Then divide the resulting
 implementation into the smallest reasonable, human-verifiable increments and
 optionally preserve them in an issue-backed work system. “Thin” applies to
-every work item and commit, not only to an initial release slice.
+every work item and commit, not only to an initial release slice. A normal
+slice is a thin vertical slice: it delivers one small user-visible outcome
+through every relevant layer, rather than stopping at a database table,
+domain object, endpoint, UI shell, or test harness.
 
 Use the planning mode unless the user explicitly asks to create or update
 remote issues. Remote issue creation and comments are externally visible
@@ -65,18 +68,52 @@ reversible option.
    same core value. Do not add scale, automation, configurability, abstraction,
    multi-tenancy, integrations, dashboards, analytics, or production operations
    unless they are necessary to the first user outcome.
-5. Make each work item one coherent change that a maintainer can understand,
-   review, test, and if necessary revert without reconstructing a large hidden
-   context. A work item may span multiple files when they form one behavior;
-   split it when the pieces can be independently verified or create different
-   conceptual changes.
+5. Make each work item one coherent vertical change that a maintainer can
+   understand, review, test, demonstrate, and if necessary revert without
+   reconstructing a large hidden context. A work item may span multiple files
+   and layers when they form one behavior; slice by user outcome, not by
+   technical layer or file count.
 6. Do not split work merely to increase the issue or commit count. Combine
    tightly coupled changes when separating them would create a misleading,
-   unverifiable intermediate state. Prefer a sequence of small, useful
-   increments over one large implementation issue.
-7. Avoid speculative design. Name only the components, interfaces, and data
+   unverifiable, or non-demonstrable intermediate state. Prefer a sequence of
+   small, useful increments over one large implementation issue.
+7. Reject layer-only work as a normal product slice. A task whose only result
+   is a schema/table, migration, model, repository, service, endpoint, UI
+   shell, test fixture, or other internal seam must be folded into the first
+   behavior that uses it. Allow a standalone enabling item only when shipping
+   the behavior in the same change is genuinely unsafe or impossible; mark it
+   `delivery: enabling`, state the concrete reason, provide a meaningful
+   verification, and name its immediate dependent behavior. Enabling work is
+   not itself a completed product slice.
+8. Avoid speculative design. Name only the components, interfaces, and data
    structures required by the behavior currently being implemented, while
    documenting future decisions and unresolved risks separately.
+
+### Vertical-slice quality gate
+
+Before accepting a plan, tracker item, or child issue, evaluate every proposed
+increment against this gate:
+
+- **Outcome:** one specific user or operator can take an action and observe a
+  useful result.
+- **Complete path:** the increment includes the input/entry point, core
+  behavior, relevant state or persistence, output/feedback, and the checks
+  needed to demonstrate the path. Mark a dimension not applicable only when
+  the behavior truly does not need it.
+- **Real boundary:** the happy path runs through production code at the
+  boundary where the user observes it; a mocked or local boundary is fine when
+  it proves the same value.
+- **Acceptance:** a person can perform one end-to-end acceptance check without
+  implementing a later work item first.
+- **Size:** the work is small because the outcome is narrow, not because an
+  arbitrary layer was removed from it. It may span several files or layers.
+
+If an item fails the outcome, complete-path, or acceptance check, combine it
+with the tightly coupled work needed to pass. If it has a different user
+outcome, independent release/revert value, or materially different risk, split
+it there instead. A plan that takes seven or eight items to deliver one small
+behavior is a slicing smell: revisit the boundaries before creating children.
+Do not solve that smell by merging unrelated outcomes into one large feature.
 
 ## Workflow
 
@@ -106,6 +143,11 @@ reversible option.
    - Safe handling of any material failure mode that would make the demo
      misleading, unsafe, or destructive.
 
+   Also apply the vertical-slice quality gate. A proposed item that only adds
+   an internal layer is not complete; fold it into the smallest behavior that
+   makes that layer useful or explicitly classify it as justified enabling
+   work.
+
    If any condition is absent, add only what is needed to satisfy it.
 
 5. Produce a complete but readable implementation plan. Group related work
@@ -117,12 +159,21 @@ reversible option.
    Apply the smallest-increment test to every item:
 
    - It has one primary purpose and one clear completion boundary.
-   - It produces a useful behavior, observable artifact, or necessary tested
-     seam—not only internal motion with no way to verify it.
+   - It produces a useful behavior or observable artifact—not only internal
+     motion with no way to verify it. A necessary tested seam is acceptable
+     only for explicitly justified `delivery: enabling` work.
    - A maintainer can understand the change without reading unrelated future
      work.
    - It is not so small that it would leave a misleading or unverifiable
      intermediate state.
+
+   Apply the vertical-slice quality gate as well. Each checkbox must describe
+   the user-visible outcome and the complete path it owns. Do not create
+   separate checkboxes for “add table,” “add model,” “add endpoint,” and “add
+   UI” when those are the layers of one behavior; make them one checkbox with
+   one end-to-end acceptance check. A checkbox that is intentionally an
+   enabling prerequisite must say `delivery: enabling`, explain why it cannot
+   ship with its dependent behavior, and name that dependent item.
 
    If an item fails the test, split or combine it and explain the dependency.
 
@@ -282,14 +333,24 @@ produces one issue per unchecked item in its original order. Each child body
 must preserve the smallest reasonable human-verifiable increment and include
 an implementation contract with Objective, Context, Scope, Detailed behavior,
 Acceptance criteria, Verification, Non-goals, Dependencies, Risks and
-exceptions, and Rollback notes. Do not generate children from subtasks that cannot stand
-alone, and do not merge independent behaviors just to reduce the issue count.
+exceptions, and Rollback notes. Do not generate children from technical
+subtasks that cannot stand alone as a behavior, and do not merge independent
+behaviors just to reduce the issue count. A child for one behavior may and
+usually should include its required schema, persistence, API, UI, and tests in
+the same issue.
 It must include:
 
 ```md
 Source tracker: #123
 Feature group: `group-slug`
 Source item: `- [ ] ...`
+
+## Vertical slice contract
+
+- User outcome: ...
+- Complete path: input/entry point → core behavior → state/persistence (if applicable) → output/feedback
+- End-to-end acceptance: ...
+- Delivery: `product-slice` (or `enabling` with a concrete reason and immediate dependent behavior)
 
 ## Verification
 
@@ -346,7 +407,7 @@ or create a duplicate.
 When implementation, verification, review, or post-merge reconciliation
 reveals additional work, record it against the originating tracker issue, not
 the implementation issue alone. First resolve the source tracker from the
-current work item's `source-tracker` metadata and verify that the selected
+current work item's source-tracker metadata and verify that the selected
 feature-group slug and source-item slug occur in that tracker. If the source
 tracker or group cannot be resolved, stop and report the missing provenance;
 do not create an orphan discovery.
@@ -392,9 +453,8 @@ slug, so its delivery path remains:
 
 `tracker group → discovery comment → child issue → branch/commits → pull request`
 
-If commenting fails, preserve the proposed comment and do not retry through
-another interface or create a duplicate. Never detach the discovery into an
-unrelated group.
+If commenting fails, preserve the proposed comment and do not retry through another interface or create a
+duplicate. Never detach the discovery into an unrelated group.
 
 ### Label configuration
 

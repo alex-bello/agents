@@ -139,6 +139,12 @@ Report one finding per broken relationship. At minimum check:
   and source tracker;
 - lifecycle state is coherent: an implemented work item has a merged PR,
   while an open or closed-unmerged PR is not reported as implemented;
+- slicing quality is coherent: every normal tracker/work item names one
+  user-visible outcome, a complete path through the relevant layers, and an
+  end-to-end acceptance check. Flag layer-only work such as a table, model,
+  endpoint, UI shell, or test fixture as `invalid` unless the contract
+  explicitly marks it `delivery: enabling` with a concrete reason, meaningful
+  verification, and an immediate dependent behavior;
 - each tracker, work item, branch, commit, and PR belongs to at most one
   lifecycle chain unless the record explicitly documents a supported
   relationship.

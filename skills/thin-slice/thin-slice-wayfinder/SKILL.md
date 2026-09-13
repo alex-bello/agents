@@ -86,8 +86,14 @@ Produce one complete Markdown specification with these sections:
    each must be observable or testable.
 5. **Thin-slice implementation plan** — dependency-ordered feature groups.
    Every item is a `- [ ]` checkbox with one primary purpose, changed
-   behavior/artifact, and a human-verifiable acceptance check. The first item
-   must form a complete demonstrable path, not an architecture-only stub.
+   behavior/artifact, and a human-verifiable acceptance check. Every normal item is a thin vertical slice:
+   one user-visible outcome through the
+   relevant input, behavior, state/persistence, output, and verification
+   layers. The first item must form a complete demonstrable path, not an
+   architecture-only stub. Do not turn one behavior into separate table,
+   model, endpoint, UI, and test items. If a genuinely unsafe or impossible
+   prerequisite must stand alone, mark it `delivery: enabling`, explain the
+   reason, and name its immediate dependent behavior.
 6. **Verification strategy** — manual demonstration plus focused automated
    checks where appropriate, including failure and boundary cases.
 7. **Risks and decisions** — decision, rationale, alternatives rejected, and
@@ -100,8 +106,11 @@ Produce one complete Markdown specification with these sections:
 Before presenting it, check for one clear user and observable result, a
 complete happy path, performable acceptance criteria, no unjustified
 speculation, and appropriate placement of security, privacy, integrity, and
-safety work. If a check fails, ask the smallest question needed to repair it;
-do not silently broaden scope.
+safety work. Also apply the vertical-slice quality gate: reject layer-only
+items, combine tightly coupled layers into the smallest demonstrable behavior,
+and flag any plan that needs seven or eight items to deliver one small behavior
+for re-slicing. If a check fails, ask the smallest question needed to
+repair it; do not silently broaden scope.
 
 ## 4. Review and save as an issue
 
@@ -143,7 +152,8 @@ Resolve the three configured labels before drafting the final confirmation.
 Use existing labels only; do not assume labels can be created. Show the
 resolved provider labels (and their vocabulary names) in the confirmation.
 Do not create child issues as part of this skill; offer that later through
-`thin-slice`.
+`thin-slice`. Every checkbox in the plan must already satisfy the vertical-
+slice quality gate before it is saved as the source specification.
 
 Append this metadata block to the issue body:
 
