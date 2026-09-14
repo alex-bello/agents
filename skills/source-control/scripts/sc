@@ -55,6 +55,16 @@ function parseJson(text, context) {
   }
 }
 
+function parseCommentList(text, context) {
+  const trimmed = text.trim();
+  if (trimmed === "" || /^no comments(?: found| available)?[.!]?$/i.test(trimmed)) return [];
+  const data = parseJson(trimmed, context);
+  if (!Array.isArray(data)) {
+    fail(EXIT.normalize, `could not normalize ${context} output: expected a JSON array or empty output`);
+  }
+  return data;
+}
+
 function scalar(value, fallback = null) {
   if (value === undefined || value === null) return fallback;
   if (typeof value === "object") return value.login ?? value.username ?? value.name ?? fallback;
@@ -681,7 +691,7 @@ function forgejo(operation, args, options) {
   }
   if (operation === "issue.comments" || operation === "pr.comments") {
     const number = requireValue(args[0], `${operation.split(".")[0]} number`);
-    const data = parseJson(run("tea", ["comments", "list", number, "--output", "json", ...scoped]).stdout, operation);
+    const data = parseCommentList(run("tea", ["comments", "list", number, "--output", "json", ...scoped]).stdout, operation);
     emit({ provider: "forgejo", operation, repository: repo, number: Number(number), items: data.map(normalizeComment) });
     return;
   }

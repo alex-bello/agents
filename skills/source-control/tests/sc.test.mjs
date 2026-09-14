@@ -150,6 +150,60 @@ fi`,
   });
 });
 
+test("normalizes populated and empty Forgejo pull-request comment fixtures", async (t) => {
+  const cases = [
+    ["forgejo-pr-comments-populated.json", [{
+      id: 19,
+      author: "alex",
+      body: "Looks good",
+      url: "https://forge.example/owner/project/pulls/18#issuecomment-19",
+      createdAt: "2026-09-14T05:30:00Z",
+      updatedAt: "2026-09-14T05:31:00Z",
+    }]],
+    ["forgejo-pr-comments-empty.txt", []],
+  ];
+
+  for (const [fixtureName, expected] of cases) {
+    const directory = await fixture(t, {
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "comments list" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+    });
+    const output = await readFile(path.join(skillRoot, "tests", "fixtures", fixtureName), "utf8");
+    const result = invoke(directory, ["pr", "comments", "18"], { SC_TEST_OUTPUT: output });
+    assert.equal(result.status, 0, `${fixtureName}: ${result.stderr}`);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      provider: "forgejo", operation: "pr.comments", repository: "owner/project", number: 18, items: expected,
+    });
+  }
+});
+
+test("rejects unsupported Forgejo pull-request comment output without leaking it", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "comments list" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+  });
+  const output = await readFile(path.join(skillRoot, "tests", "fixtures", "forgejo-pr-comments-malformed.json"), "utf8");
+  const result = invoke(directory, ["pr", "comments", "18"], { SC_TEST_OUTPUT: output });
+  assert.equal(result.status, 8, result.stderr);
+  assert.match(result.stderr, /could not normalize pr\.comments output: expected a JSON array or empty output/);
+  assert.doesNotMatch(result.stderr, /fixture-sensitive-marker/);
+  assert.equal(result.stdout, "");
+});
+
 test("fails deterministically when provider detection is ambiguous", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "ssh://git@unknown.example/owner/project.git"',
