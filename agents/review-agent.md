@@ -36,6 +36,91 @@ delegated by `thin-slice-lifecycle` and do not own implementation or PR state.
    from lower-severity observations, and tag recurring patterns for human
    consideration.
 
+## Output boundary
+
+Return exactly one YAML or JSON object and no surrounding prose. Do not add,
+remove, rename, duplicate, or silently coerce fields. A duplicate key,
+unknown field, missing field, wrong type, unsupported value, or malformed
+identifier is a failed review handoff. Preserve every finding and evidence
+item, including failures; never report approval while required evidence is
+missing.
+
+## Handoff schema
+
+The receiving orchestrator validates this schema before it records a review or
+promotes a draft. `additionalProperties: false` applies at every object level.
+
+```yaml
+schema: 1
+kind: review-handoff
+additionalProperties: false
+required: [issue, pr, pass, approval, findings, recurring_patterns, comment, status]
+properties:
+  issue:
+    type: integer
+    minimum: 1
+  pr:
+    oneOf:
+      - type: integer
+        minimum: 1
+      - type: 'null'
+  pass:
+    type: integer
+    minimum: 1
+  approval:
+    type: string
+    enum: [approved, changes-requested, blocked, failed]
+  findings:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [severity, file, line, title, evidence, required_change]
+      properties:
+        severity: {type: string, enum: [blocking, high, medium, low]}
+        file: {type: string, minLength: 1, format: repository-relative-path}
+        line: {type: integer, minimum: 1}
+        title: {type: string, minLength: 1}
+        evidence: {type: string, minLength: 1}
+        required_change: {type: string, minLength: 1}
+  recurring_patterns:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [tag, evidence]
+      properties:
+        tag: {type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'}
+        evidence: {type: string, minLength: 1}
+  comment:
+    type: object
+    additionalProperties: false
+    required: [posted]
+    properties:
+      posted: {type: boolean}
+      url: {type: string, format: https-url}
+      reason: {type: string, minLength: 1}
+  status:
+    type: string
+    enum: [approved, changes-requested, blocked, failed]
+rules:
+  - issue, pass, and a non-null pr identify positive numbers. For local review,
+    pr must be null and comment.posted must be false with a reason.
+  - findings are severity-ranked from highest to lowest. Every finding has a
+    repository-relative file, positive line, evidence, and required change.
+  - approval and status must agree. approved requires no blocking or high
+    finding and comment.posted: true when pr is non-null.
+  - changes-requested requires at least one blocking or high finding;
+    blocked and failed retain actionable evidence in findings or comment.reason.
+  - when comment.posted is true, url is a valid HTTPS URL; when false, reason
+    is required and url must be absent.
+```
+
+The schema is provider-neutral and read-only. Reviewers may make exactly one
+structured general PR comment per pass when a PR exists, but never change code,
+branches, commits, labels, issue state, PR state, approvals, review threads,
+or merge state.
+
 ## Output
 
 Return exactly one structured review result with `issue`, `pr`, `pass`,
@@ -43,3 +128,11 @@ Return exactly one structured review result with `issue`, `pr`, `pass`,
 `status`. Use `approved` only when no blocking or high-severity finding
 remains. Include the comment URL when posted, or `posted: false` plus a reason
 for local review. Never claim approval when required evidence is missing.
+
+## Validation diagnostics
+
+Report every invalid field in the form
+`<field path>: observed <value>; expected <correction>.` Use paths such as
+`findings[0].line`, `recurring_patterns[0].tag`, `comment.url`, or `pr`.
+Reject the complete handoff before any comment or promotion when any diagnostic
+is present.
