@@ -36,6 +36,39 @@ function reviewLoop(reviewStatuses) {
   return { state: "in-progress", remediationPasses };
 }
 
+function runApprovedFixture() {
+  const issue = { number: 110, labels: ["thin-slice", "thin-slice-ready"] };
+  const operations = [];
+  const pr = { number: 17, draft: true, state: "open", head: "thin-slice/110-example" };
+  const handoff = {
+    issue: issue.number,
+    repository: "operator/agents",
+    branch_or_worktree: pr.head,
+    base_commit: "base-commit",
+    commits: [{ sha: "implementation-commit", afterBase: true }],
+    changed_files: ["skills/thin-slice/thin-slice-lifecycle/SKILL.md"],
+    verification: {
+      tests: [{ command: "pnpm test", status: "passed", evidence: "all tests passed" }],
+      acceptance: [{ criterion: "approved run", status: "passed", evidence: "fixture passed" }],
+      manual_evidence: { status: "not-applicable", evidence: "contract-only repository" },
+    },
+    status: "ready-for-review",
+  };
+
+  operations.push("issue.edit ready->in-progress");
+  issue.labels = ["thin-slice", "thin-slice-in-progress"];
+  operations.push("implementation.handoff");
+  assert.equal(validateHandoff(handoff), true);
+  operations.push("pr.create --draft");
+  operations.push("review.handoff");
+  operations.push("pr.comment pass=1");
+  operations.push("pr.ready");
+  pr.draft = false;
+  operations.push("pr.view draft=false");
+
+  return { issue, pr, operations };
+}
+
 test("defines portable lifecycle agents and the strict orchestration contract", async () => {
   const [skill, implementer, reviewer] = await Promise.all([
     readFile(lifecycle, "utf8"),
@@ -118,4 +151,26 @@ test("encodes review comment and recurring-pattern evidence for each PR pass", a
   assert.match(text, /pass number, approval status, findings, required changes, evidence/);
   assert.match(text, /tags, counts, and evidence/);
   assert.match(text, /For `never`, set `pr: null`/);
+});
+
+test("approved fixture performs one bounded run and promotes without merging or waiting", async () => {
+  const [skill, result] = await Promise.all([
+    readFile(lifecycle, "utf8"),
+    Promise.resolve(runApprovedFixture()),
+  ]);
+
+  assert.match(skill, /bounded command with an auditable operation ledger/);
+  assert.deepEqual(result.operations, [
+    "issue.edit ready->in-progress",
+    "implementation.handoff",
+    "pr.create --draft",
+    "review.handoff",
+    "pr.comment pass=1",
+    "pr.ready",
+    "pr.view draft=false",
+  ]);
+  assert.equal(result.pr.draft, false);
+  assert.equal(result.pr.state, "open");
+  assert.deepEqual(result.issue.labels, ["thin-slice", "thin-slice-in-progress"]);
+  assert.equal(result.operations.some((operation) => /merge|wait|close|follow-up/i.test(operation)), false);
 });

@@ -1,6 +1,6 @@
 ---
 name: thin-slice-lifecycle
-version: 1.0.0
+version: 1.1.0
 description: Orchestrate exactly one thin-slice issue from ready selection through implementation, draft pull-request review, and approval promotion without merging it.
 ---
 
@@ -72,6 +72,29 @@ in this mode.
 If a lifecycle mutation fails, preserve the last verified label state, stop,
 and report the `issue.edit` operation and provider diagnostic. Do not retry
 through a provider-specific command.
+
+## Mutation boundary and run ledger
+
+Treat the lifecycle as a bounded command with an auditable operation ledger.
+All preflight, selection, provenance, handoff, and review reads are
+non-mutating. The only provider mutations permitted by this skill are:
+
+- one configured ready-to-in-progress `sc issue edit` transition when
+  `automatic_lifecycle: true`;
+- one draft `sc pr create` when the configured PR policy permits it;
+- exactly one structured general `sc pr comment` for each review pass when a
+  PR exists; and
+- one `sc pr ready` followed by `sc pr view` after an approved review.
+
+The implementation agent may create its branch, worktree, commits, and local
+verification artifacts within the implementation contract, but it cannot
+perform any provider lifecycle or PR mutation. The reviewer is read-only apart
+from its single general comment. Never merge, wait for merge, close the issue,
+edit `AGENTS.md`, create follow-up issues, use inline review threads, or add
+unconfigured labels. Record the ordered operation ledger in the structured
+result so a contract fixture can assert that no extra provider mutation
+occurred and that an approved run ended with `draft: false` while the issue
+remained in progress.
 
 ## Implementation handoff
 
