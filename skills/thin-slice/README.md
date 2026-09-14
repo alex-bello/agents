@@ -48,6 +48,12 @@ thin-slice-implement (one work item per invocation)
 thin-slice-audit (read-only health check at any time)
 ```
 
+For a controlled implementation-and-review run, use
+`thin-slice-lifecycle [issue-number]`. It selects exactly one ready issue,
+delegates implementation and read-only review through portable agents, creates
+and reviews a draft PR according to `.thin-slice.yml`, permits two remediation
+passes, and promotes an approved draft without waiting for merge.
+
 Wayfinder is the preferred entry point when the idea is underspecified. The
 core `thin-slice` skill can also plan a sufficiently clear request directly.
 Setup is required before Wayfinder or any configured issue-backed workflow:

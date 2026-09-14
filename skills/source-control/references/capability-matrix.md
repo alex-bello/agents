@@ -15,6 +15,7 @@ The v1 contract targets behavior confirmed for `tea` 0.14 and `gh` 2.96.
 | Pull-request diff | yes | yes |
 | Pull-request checks | from pull `ci` data | `pr checks` |
 | Pull-request create/comment | yes | yes |
+| Pull-request draft promotion (`pr ready`) | yes | yes |
 | Pull-request checkout | yes | yes |
 | Pull-request merge/close; issue delete; release | intentionally unsupported | intentionally unsupported |
 | Review-thread mutation | intentionally unsupported | intentionally unsupported |

@@ -108,9 +108,14 @@ function normalizePullRequest(item) {
     ...normalizeItem(item),
     base: scalar(item.base ?? item.baseRefName),
     head: scalar(item.head ?? item.headRefName),
-    draft: item.draft ?? item.isDraft ?? /^WIP:/i.test(item.title ?? ""),
+    draft: item.draft ?? item.isDraft ?? null,
     mergeable: item.mergeable ?? null,
   };
+}
+
+function canonicalPullRequestUrl(repository, number, host) {
+  if (!repository || !host) return null;
+  return `https://${host}/${repository}/pulls/${number}`;
 }
 
 function parseGlobal(argv) {
@@ -537,7 +542,7 @@ function github(operation, args, options) {
     requireFile(parsed["body-file"], "--body-file");
     const resource = operation.split(".")[0];
     const result = run("gh", [resource, "comment", number, "--body-file", parsed["body-file"], ...scoped]);
-    emit(normalizeCreatedPullRequest(result.stdout, "github", repo, parsed));
+    emit({ provider: "github", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
     return;
   }
   if (operation === "pr.list") {
@@ -591,6 +596,19 @@ function github(operation, args, options) {
     emit(normalizeCreatedPullRequest(result.stdout, "github", repo, parsed, hostFromRemote(remoteUrl(options.remote))));
     return;
   }
+  if (operation === "pr.ready") {
+    const number = requireValue(args[0], "pull request number");
+    const result = run("gh", ["pr", "ready", number, ...scoped]);
+    emit({
+      provider: "github",
+      operation,
+      repository: repo,
+      number: Number(number),
+      success: true,
+      url: urlFromOutput(result.stdout) ?? canonicalPullRequestUrl(repo, Number(number), hostFromRemote(remoteUrl(options.remote))),
+    });
+    return;
+  }
   if (operation === "pr.checkout") {
     const number = requireValue(args[0], "pull request number");
     run("gh", ["pr", "checkout", number, ...scoped]);
@@ -642,7 +660,7 @@ function forgejo(operation, args, options) {
     const entity = operation.startsWith("issue") ? "issues" : "pulls";
     const fields = operation.startsWith("issue")
       ? "index,title,body,state,author,url,labels,created,updated"
-      : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable,ci";
+      : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable,draft,ci";
     const native = [entity, "list", "--limit", String(options.limit), "--state", parsed.state || "open",
       "--fields", fields, "--output", "json", ...scoped];
     if (parsed.label?.length) native.push("--labels", parsed.label.join(","));
@@ -655,7 +673,7 @@ function forgejo(operation, args, options) {
     const entity = operation.startsWith("issue") ? "issues" : "pulls";
     const fields = entity === "issues"
       ? "index,title,body,state,author,url,labels,created,updated"
-      : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable";
+      : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable,draft";
     const data = parseJson(run("tea", [entity, number, "--fields", fields, "--output", "json", ...scoped]).stdout, operation);
     const item = Array.isArray(data) ? data[0] : data;
     emit({ provider: "forgejo", operation, repository: repo, item: entity === "pulls" ? normalizePullRequest(item) : normalizeItem(item) });
@@ -752,6 +770,19 @@ function forgejo(operation, args, options) {
     emit(normalizeCreatedPullRequest(result.stdout, "forgejo", repo, parsed, hostFromRemote(remoteUrl(options.remote))));
     return;
   }
+  if (operation === "pr.ready") {
+    const number = requireValue(args[0], "pull request number");
+    const result = run("tea", ["pulls", "edit", number, "--ready", ...scoped]);
+    emit({
+      provider: "forgejo",
+      operation,
+      repository: repo,
+      number: Number(number),
+      success: true,
+      url: urlFromOutput(result.stdout) ?? canonicalPullRequestUrl(repo, Number(number), hostFromRemote(remoteUrl(options.remote))),
+    });
+    return;
+  }
   if (operation === "pr.checkout") {
     const number = requireValue(args[0], "pull request number");
     run("tea", ["pulls", "checkout", number, ...scoped]);
@@ -795,6 +826,7 @@ if (resource === "capabilities") {
       "pr.checks": true,
       "pr.create": true,
       "pr.comment": true,
+      "pr.ready": true,
       "pr.checkout": true,
       "pr.merge": false,
       "review.resolve": false,

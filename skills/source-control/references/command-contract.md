@@ -40,9 +40,10 @@ Global options must precede the resource:
 | `pr checks` | `NUMBER` | none |
 | `pr create` | `--base BRANCH`, `--head BRANCH`, `--title TEXT`, `--body-file PATH` | `--draft`, repeated `--label NAME` |
 | `pr comment` | `NUMBER`, `--body-file PATH` | none |
+| `pr ready` | `NUMBER` | none |
 | `pr checkout` | `NUMBER` | none |
 
-Create, edit, close, and comment commands are externally visible writes. Checkout
+Create, edit, close, comment, and draft-promotion commands are externally visible writes. Checkout
 changes the local worktree. Use them only when the user's request authorizes the
 effect.
 
@@ -85,6 +86,14 @@ tracker, comparison, documentation, and body URLs are ignored. Duplicate copies
 of one canonical PR URL are accepted, while no usable candidate or multiple
 distinct PR candidates exits with code `8`. The wrapper does not retry the
 native create operation after a normalization failure.
+
+`pr.ready` maps to `gh pr ready <number>` on GitHub and
+`tea pulls edit <number> --ready` on Forgejo. It returns normalized provider,
+repository, pull-request number, `success: true`, and URL data when the native
+command provides it; otherwise it derives the canonical pull-request URL from
+the detected remote host. Native failures propagate as exit code `7`, and an
+unsupported provider operation returns exit code `4` with an actionable
+diagnostic.
 
 ## Exit codes
 

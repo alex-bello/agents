@@ -410,6 +410,95 @@ test("normalizes a GitHub pull-request creation identity", async (t) => {
   });
 });
 
+test("promotes a GitHub draft pull request and normalizes its URL", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'test "$*" = "pr ready 12" && printf "%s\\n" "Ready for review"',
+  });
+  const result = invoke(directory, ["pr", "ready", "12"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "github", operation: "pr.ready", repository: "owner/project",
+    number: 12, success: true, url: "https://github.com/owner/project/pulls/12",
+  });
+});
+
+test("promotes a Forgejo draft pull request and normalizes its URL", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$*" = "pulls edit 14 --ready" ]; then
+  printf '%s\\n' 'Ready for review'
+else
+  exit 99
+fi`,
+  });
+  const result = invoke(directory, ["pr", "ready", "14"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "forgejo", operation: "pr.ready", repository: "owner/project",
+    number: 14, success: true, url: "https://forge.example/owner/project/pulls/14",
+  });
+});
+
+test("normalizes a GitHub general PR comment without treating it as PR creation", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'test "$1 $2 $3 $4" = "pr comment 12 --body-file" && test -f "$5" && printf "%s\\n" "https://github.com/owner/project/pull/12#issuecomment-99"',
+  });
+  const bodyFile = path.join(directory, "review.md");
+  await writeFile(bodyFile, "Review pass 1");
+  const result = invoke(directory, ["pr", "comment", "12", "--body-file", bodyFile]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "github", operation: "pr.comment", repository: "owner/project",
+    number: 12, success: true, url: "https://github.com/owner/project/pull/12#issuecomment-99",
+  });
+});
+
+test("propagates provider failures for draft promotion", async (t) => {
+  for (const scripts of [
+    {
+      git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+      gh: 'test "$*" = "pr ready 12" && printf "provider rejected\\n" >&2 && exit 42',
+    },
+    {
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: 'if [ "$1" = "logins" ]; then printf "[{\\"url\\":\\"https://forge.example\\"}]\\n"; elif [ "$*" = "pulls edit 14 --ready" ]; then printf "provider rejected\\n" >&2; exit 42; else exit 99; fi',
+    },
+  ]) {
+    const directory = await fixture(t, scripts);
+    const result = invoke(directory, ["pr", "ready", scripts.gh ? "12" : "14"]);
+    assert.equal(result.status, 7, result.stderr);
+    assert.match(result.stderr, /provider rejected|command failed/);
+    assert.equal(result.stdout, "");
+  }
+});
+
+test("reports draft promotion in provider capabilities", async (t) => {
+  for (const scripts of [
+    { git: 'printf "%s\\n" "git@github.com:owner/project.git"' },
+    { git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"', tea: 'if [ "$1" = "logins" ]; then printf "[{\\"url\\":\\"https://forge.example\\"}]\\n"; else exit 99; fi' },
+  ]) {
+    const directory = await fixture(t, scripts);
+    const result = invoke(directory, ["capabilities"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).capabilities["pr.ready"], true);
+  }
+});
+
+test("reports an actionable diagnostic for unsupported provider commands", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+  });
+  const result = invoke(directory, ["pr", "unsupported-action"]);
+  assert.equal(result.status, 4, result.stderr);
+  assert.match(result.stderr, /operation is unsupported for github: pr\.unsupported-action/);
+  assert.equal(result.stdout, "");
+});
+
 test("rejects a Forgejo issue URL as a pull request URL", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',

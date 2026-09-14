@@ -45,6 +45,7 @@ the target application's agent format.
 │       ├── thin-slice-setup/ # Repository lifecycle setup
 │       ├── thin-slice-audit/ # Lifecycle traceability audit
 │       ├── thin-slice-implement/ # Work-item implementation workflow
+│       ├── thin-slice-lifecycle/ # One-issue implementation and review orchestration
 │       └── thin-slice-wayfinder/
 │           ├── SKILL.md     # Idea refinement workflow
 │           └── agents/       # Optional UI metadata

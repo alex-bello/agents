@@ -21,6 +21,12 @@ Use `scripts/sc issue edit <number> --add-label <name>` and
 labels; the wrapper translates these options to the native GitHub or Forgejo
 CLI syntax.
 
+Use `scripts/sc pr ready <number>` to promote a draft pull request. The
+provider-neutral operation maps to `gh pr ready <number>` on GitHub and
+`tea pulls edit <number> --ready` on Forgejo, then returns normalized provider,
+repository, pull-request number, success, and URL data. Call `sc pr view` after
+promotion and require `draft: false` before reporting approval.
+
 ## Workflow
 
 1. Run `scripts/sc provider` from the repository.
