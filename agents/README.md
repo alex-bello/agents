@@ -21,5 +21,7 @@ The lifecycle orchestration skill consumes these provider-neutral definitions:
 
 Both definitions include machine-readable YAML contracts, closed field sets,
 allowed statuses, identifier and list-shape rules, and field-level rejection
-diagnostics. The handoff fixtures live in
+diagnostics. Their role-specific mutation boundaries are enforced by the
+orchestrator: implementation is local-only, while review permits at most one
+structured general PR comment for a matching pass. The handoff fixtures live in
 `skills/thin-slice/thin-slice/tests/handoff-schemas.test.mjs`.

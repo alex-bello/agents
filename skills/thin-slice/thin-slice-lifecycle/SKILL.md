@@ -96,6 +96,18 @@ result so a contract fixture can assert that no extra provider mutation
 occurred and that an approved run ended with `draft: false` while the issue
 remained in progress.
 
+The orchestrator must enforce these boundaries against requested operations,
+not only trust the agent's prose or handoff. Implementation requests are
+limited to local branch/worktree changes, commits, and verification; requests
+for `issue.edit`, issue comments or closure, label changes, `pr.create`,
+`pr.comment`, `pr.ready`, merge, or other provider mutation are rejected with
+an actionable diagnostic before provider state changes. Review requests are
+read-only except for one structured general `pr.comment` tied to the active
+review pass and an existing PR. A duplicate, unmatched, inline, or otherwise
+malformed comment request is rejected before `sc pr comment`. Every rejected
+request preserves the last verified issue, PR, label, and operation-ledger
+state, and must not be retried through another interface.
+
 ## Implementation handoff
 
 Delegate one implementation pass to the implementation agent. The prompt must

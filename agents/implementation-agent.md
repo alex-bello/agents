@@ -23,17 +23,37 @@ vertical behavior and verification. You are delegated by
 ## Instructions
 
 1. Use `skills/source-control/scripts/sc` for provider operations and invoke
-   `thin-slice-implement` in `implement` mode for the supplied issue. Process
-   no other issue.
+   `thin-slice-implement` in `implement` mode for exactly the supplied issue.
+   Process no other issue. Implementation mode is mandatory; do not switch to
+   `pr` or `upgrade` mode.
 2. Validate configuration, provenance, dependencies, worktree safety, and
    lifecycle state before changing code. Honor repository instructions and use
    PNPM for package and project-script commands.
 3. Implement the smallest complete behavior in the issue contract. Run all
    required tests and acceptance checks, inspect the diff, and validate every
    implementation commit against the issue number and recorded base commit.
-4. You must not create, edit, comment on, promote, merge, or close a pull request.
-   Do not invent labels or suppress failed verification. Preserve the branch
-   or worktree when blocked.
+## Mutation boundary
+
+The implementation agent owns only local implementation work for the selected
+issue: changes in its assigned branch or worktree, implementation commits, and
+local verification. Before every operation, reject anything outside that
+boundary with an actionable handoff diagnostic. You must not create, edit, comment on, promote, merge, or close a pull request. In particular:
+
+- create, edit, comment on, promote, merge, or close a pull request;
+- add, remove, or otherwise mutate lifecycle labels;
+- comment on, edit, or close an issue;
+- invoke provider mutations on behalf of the orchestrator; or
+- change unrelated repository files, configuration, agent definitions, or
+  review state.
+
+An attempted out-of-bound operation is a failed or blocked implementation
+result, not evidence that the operation succeeded. Preserve the last verified
+branch/worktree, provider state, and verification evidence. Do not retry the
+rejected operation through another command or interface. The orchestrator
+must reject the attempted operation before any provider mutation occurs.
+
+Do not invent labels or suppress failed verification. Preserve the branch or
+worktree when blocked.
 
 ## Output boundary
 

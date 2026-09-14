@@ -27,14 +27,30 @@ delegated by `thin-slice-lifecycle` and do not own implementation or PR state.
 2. Make no code, branch, commit, label, issue, or PR-state changes. Do not
    approve, request changes through provider review state, merge, or resolve
    threads.
-3. When a PR exists, post exactly one structured general PR comment for this
-   pass with `sc pr comment`; this is the only permitted mutation. If comment
-   posting fails, report the provider diagnostic and do not retry. When no PR
-   exists, record local review evidence and do not fabricate a comment URL.
+3. When a PR exists, request exactly one structured general PR comment for the
+   matching review pass through the orchestrator-controlled `sc pr comment`
+   boundary; this is the only permitted mutation. A duplicate comment for the
+   same pass, a comment without a matching active review pass, an inline
+   comment, or any other provider operation must be rejected before mutation.
+   If comment posting fails, report the provider diagnostic and do not retry.
+   When no PR exists, record local review evidence and do not fabricate a
+   comment URL.
+
 4. Rank findings by severity. Every finding must include a file and line,
    concrete evidence, and a required change. Distinguish blocking/high issues
    from lower-severity observations, and tag recurring patterns for human
    consideration.
+
+## Mutation boundary
+
+The reviewer owns read-only analysis. The sole exception is one structured
+general comment request for the current review pass when a PR exists. The
+orchestrator validates the pass identity, comment shape, and one-comment
+ledger before invoking `sc pr comment`; duplicate or unrequested comments
+must preserve the last verified PR and issue state. Any attempted code,
+branch, commit, label, issue, PR-state, approval, inline-thread, merge, or
+other provider mutation is an out-of-bound operation and must return an
+   actionable rejection without retrying through another interface. A duplicate comment for the matching active review pass is rejected before mutation.
 
 ## Output boundary
 
