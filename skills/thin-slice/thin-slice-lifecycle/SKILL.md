@@ -1,6 +1,6 @@
 ---
 name: thin-slice-lifecycle
-version: 1.1.0
+version: 1.2.0
 description: Orchestrate exactly one thin-slice issue from ready selection through implementation, draft pull-request review, and approval promotion without merging it.
 ---
 
@@ -222,6 +222,43 @@ Record every review pass when a PR exists, including approved passes and
 remediation passes. If comment posting fails, preserve the PR and in-progress
 issue state, report the exact provider failure, and stop; do not retry or claim
 that the pass was recorded.
+
+## Bounded remediation contract
+
+The orchestrator keeps a per-run review ledger containing the selected issue,
+PR, review pass number, remediation-pass count, verified lifecycle state,
+structured comment result, findings, and recurring-pattern evidence. The count
+is incremented before each remediation handoff and is never reset by a stale,
+duplicate, malformed, or failed result.
+
+Classify each review result before taking the next action:
+
+- An approved result has no `blocking` or `high` finding. Medium and low
+  findings are non-blocking observations: report them in the structured
+  evidence, perform no remediation, and continue to the configured promotion
+  boundary.
+- A result with a blocking or high finding requests remediation only when the
+  remediation-pass count is below two. Pass the complete ranked findings and
+  recurring-pattern evidence to the same implementation agent, then require a
+  fresh implementation handoff and review pass.
+- When the second remediation pass still leaves a blocking or high finding,
+  stop with an unresolved summary. Do not delegate a third pass, promote the
+  draft, close the issue, create a follow-up issue, or edit `AGENTS.md`.
+  Preserve the draft PR, the in-progress lifecycle state, every review
+  comment, the two-pass count, and the final findings for human follow-up.
+- A failed remediation, malformed handoff or review result, provider failure,
+  missing evidence, or lost PR state is conservative failure. Do not claim
+  approval or promotion; preserve the last verified issue, PR, label, comment,
+  and ledger state, and report the exact failure and next operator action.
+
+Each valid review pass may record exactly one structured general comment after
+handoff validation. A rejected, duplicate, or failed comment mutation records
+no new pass comment and never retries through another interface. Recurring
+patterns are normalized to the review schema's lowercase kebab-case tags,
+deduplicated by tag, sorted lexicographically, and reported with counts and
+supporting evidence so the same evidence produces stable output across runs.
+Pattern reports are advisory only and must not mutate repository instructions
+or create work automatically.
 
 ## Remediation and promotion
 

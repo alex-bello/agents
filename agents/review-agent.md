@@ -39,7 +39,9 @@ delegated by `thin-slice-lifecycle` and do not own implementation or PR state.
 4. Rank findings by severity. Every finding must include a file and line,
    concrete evidence, and a required change. Distinguish blocking/high issues
    from lower-severity observations, and tag recurring patterns for human
-   consideration.
+   consideration. Use stable lowercase kebab-case tags: the same evidence
+   must produce the same tag, without pass numbers, timestamps, or other
+   run-specific suffixes.
 
 ## Mutation boundary
 

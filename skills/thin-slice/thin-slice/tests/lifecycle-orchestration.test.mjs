@@ -36,6 +36,52 @@ function reviewLoop(reviewStatuses) {
   return { state: "in-progress", remediationPasses };
 }
 
+function stablePatterns(patterns) {
+  const grouped = new Map();
+  for (const pattern of patterns) {
+    const existing = grouped.get(pattern.tag) ?? { tag: pattern.tag, count: 0, evidence: [] };
+    existing.count += 1;
+    if (!existing.evidence.includes(pattern.evidence)) existing.evidence.push(pattern.evidence);
+    grouped.set(pattern.tag, existing);
+  }
+  return [...grouped.values()].sort((left, right) => left.tag.localeCompare(right.tag));
+}
+
+function runReviewContractFixture(reviewPasses) {
+  let remediationPasses = 0;
+  const comments = [];
+  const patterns = [];
+
+  for (const review of reviewPasses) {
+    if (review.providerFailure || review.malformed || review.remediationFailure) {
+      return {
+        state: "in-progress",
+        terminal: review.providerFailure
+          ? "provider-failure"
+          : review.malformed
+            ? "malformed-remediation"
+            : "remediation-failure",
+        remediationPasses,
+        draftAvailable: true,
+        comments,
+        patterns: stablePatterns(patterns),
+      };
+    }
+    comments.push(review.pass);
+    patterns.push(...review.recurringPatterns);
+    const blocking = review.findings.some((finding) => ["blocking", "high"].includes(finding.severity));
+    if (!blocking) {
+      return { state: "promoted", remediationPasses, draftAvailable: false, comments, patterns: stablePatterns(patterns) };
+    }
+    if (remediationPasses >= 2) {
+      return { state: "in-progress", terminal: "unresolved", remediationPasses, draftAvailable: true, comments, patterns: stablePatterns(patterns) };
+    }
+    remediationPasses += 1;
+  }
+
+  return { state: "in-progress", terminal: "awaiting-review", remediationPasses, draftAvailable: true, comments, patterns: stablePatterns(patterns) };
+}
+
 const allowedImplementationOperations = new Set(["branch.write", "commit.write", "verification.run"]);
 const allowedReviewOperations = new Set(["read.issue", "read.pr", "read.diff", "read.evidence", "pr.comment.general"]);
 
@@ -178,6 +224,83 @@ test("keeps unresolved findings in progress after two remediation passes", () =>
   assert.deepEqual(reviewLoop(["changes-requested", "approved"]), {
     state: "promoted", remediationPasses: 1,
   });
+});
+
+test("classifies non-blocking findings as reportable observations without remediation", () => {
+  const result = runReviewContractFixture([{
+    pass: 1,
+    findings: [{ severity: "medium" }, { severity: "low" }],
+    recurringPatterns: [{ tag: "missing-acceptance-evidence", evidence: "medium observation" }],
+  }]);
+  assert.equal(result.state, "promoted");
+  assert.equal(result.remediationPasses, 0);
+  assert.equal(result.draftAvailable, false);
+  assert.deepEqual(result.comments, [1]);
+});
+
+test("stops after exactly two remediation passes with unresolved findings and stable patterns", () => {
+  const result = runReviewContractFixture([1, 2, 3].map((pass) => ({
+    pass,
+    findings: [{ severity: "blocking" }],
+    recurringPatterns: [{ tag: "unsafe-retry", evidence: "same blocking evidence" }],
+  })));
+  assert.deepEqual(result, {
+    state: "in-progress",
+    terminal: "unresolved",
+    remediationPasses: 2,
+    draftAvailable: true,
+    comments: [1, 2, 3],
+    patterns: [{ tag: "unsafe-retry", count: 3, evidence: ["same blocking evidence"] }],
+  });
+});
+
+test("malformed remediation preserves the draft and last verified state", () => {
+  const result = runReviewContractFixture([
+    { pass: 1, findings: [{ severity: "blocking" }], recurringPatterns: [] },
+    { pass: 2, malformed: true, findings: [], recurringPatterns: [] },
+  ]);
+  assert.equal(result.state, "in-progress");
+  assert.equal(result.terminal, "malformed-remediation");
+  assert.equal(result.remediationPasses, 1);
+  assert.equal(result.draftAvailable, true);
+  assert.deepEqual(result.comments, [1]);
+});
+
+test("failed remediation does not claim approval or promote the draft", () => {
+  const result = runReviewContractFixture([
+    { pass: 1, findings: [{ severity: "blocking" }], recurringPatterns: [] },
+    { pass: 2, remediationFailure: true, findings: [], recurringPatterns: [] },
+  ]);
+  assert.equal(result.state, "in-progress");
+  assert.equal(result.terminal, "remediation-failure");
+  assert.equal(result.draftAvailable, true);
+  assert.deepEqual(result.comments, [1]);
+});
+
+test("provider failure preserves the verified comment ledger without retry", () => {
+  const result = runReviewContractFixture([
+    { pass: 1, findings: [{ severity: "blocking" }], recurringPatterns: [] },
+    { pass: 2, providerFailure: true, findings: [], recurringPatterns: [] },
+  ]);
+  assert.equal(result.terminal, "provider-failure");
+  assert.deepEqual(result.comments, [1]);
+  assert.equal(result.draftAvailable, true);
+});
+
+test("recurring-pattern output is deduplicated and deterministic", () => {
+  const result = runReviewContractFixture([{
+    pass: 1,
+    findings: [{ severity: "low" }],
+    recurringPatterns: [
+      { tag: "z-pattern", evidence: "z" },
+      { tag: "a-pattern", evidence: "a" },
+      { tag: "z-pattern", evidence: "z" },
+    ],
+  }]);
+  assert.deepEqual(result.patterns, [
+    { tag: "a-pattern", count: 1, evidence: ["a"] },
+    { tag: "z-pattern", count: 2, evidence: ["z"] },
+  ]);
 });
 
 test("encodes review comment and recurring-pattern evidence for each PR pass", async () => {
