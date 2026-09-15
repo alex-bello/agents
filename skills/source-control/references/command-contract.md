@@ -47,6 +47,67 @@ Create, edit, close, comment, and draft-promotion commands are externally visibl
 changes the local worktree. Use them only when the user's request authorizes the
 effect.
 
+### Forgejo pull-request comments
+
+`pr comments NUMBER` invokes Tea as:
+
+```text
+tea comments list NUMBER --output json
+```
+
+The Forgejo adapter supports these native response forms:
+
+- A top-level JSON array containing comment objects. Tea may provide author,
+  body, URL, and timestamp values using its native names (`author`/`user`,
+  `body`/`content`, `url`/`html_url`, `createdAt`/`created`, and
+  `updatedAt`/`updated`).
+- Empty or whitespace-only output.
+- A case-insensitive `No comments`, `No comments found`, or `No comments
+  available` message, with an optional trailing `.` or `!`.
+
+The wrapper returns the provider-neutral envelope shown below. Every comment
+has the stable `id`, `author`, `body`, `url`, `createdAt`, and `updatedAt`
+fields; an absent native value is represented as `null`. An empty response
+returns `items: []` with exit status `0`.
+
+```json
+{
+  "provider": "forgejo",
+  "operation": "pr.comments",
+  "repository": "owner/project",
+  "number": 18,
+  "items": [
+    {
+      "id": 19,
+      "author": "alex",
+      "body": "Looks good",
+      "url": "https://forge.example/owner/project/pulls/18#issuecomment-19",
+      "createdAt": "2026-09-14T05:30:00Z",
+      "updatedAt": "2026-09-14T05:31:00Z"
+    }
+  ]
+}
+```
+
+Malformed JSON or a non-array JSON value is a normalization failure (exit
+status `8`). The diagnostic identifies the `pr.comments` operation and the
+expected JSON-array-or-empty shape, but does not print the raw native output,
+credentials, or authenticated URLs. For example:
+
+```text
+sc: could not normalize pr.comments output: expected a JSON array or empty output
+```
+
+The compatibility boundary is covered by
+`tests/fixtures/forgejo-pr-comments-populated.json`,
+`tests/fixtures/forgejo-pr-comments-empty.txt`, and
+`tests/fixtures/forgejo-pr-comments-malformed.json`. Run the focused checks
+with:
+
+```sh
+node --test --test-name-pattern="Forgejo pull-request comment" skills/source-control/tests/sc.test.mjs
+```
+
 ## Output
 
 The wrapper writes exactly one JSON object to stdout:
