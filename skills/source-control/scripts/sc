@@ -65,6 +65,14 @@ function parseCommentList(text, context) {
   return data;
 }
 
+function parseGitHubCommentList(text, context) {
+  const data = parseJson(text, context);
+  if (!data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.comments)) {
+    fail(EXIT.normalize, `could not normalize ${context} output: expected a JSON object with a comments array`);
+  }
+  return data.comments;
+}
+
 function scalar(value, fallback = null) {
   if (value === undefined || value === null) return fallback;
   if (typeof value === "object") return value.login ?? value.username ?? value.name ?? fallback;
@@ -567,10 +575,11 @@ function github(operation, args, options) {
     const fields = operation.endsWith("comments")
       ? "number,comments"
       : "number,title,body,state,author,url,labels,createdAt,updatedAt,baseRefName,headRefName,isDraft,mergeable";
-    const data = parseJson(run("gh", ["pr", "view", number, "--json", fields, ...scoped]).stdout, operation);
-    if (operation.endsWith("comments")) {
-      emit({ provider: "github", operation, repository: repo, number: Number(number), items: (data.comments ?? []).map(normalizeComment) });
+    if (operation === "pr.comments") {
+      const comments = parseGitHubCommentList(run("gh", ["pr", "view", number, "--json", fields, ...scoped]).stdout, operation);
+      emit({ provider: "github", operation, repository: repo, number: Number(number), items: comments.map(normalizeComment) });
     } else {
+      const data = parseJson(run("gh", ["pr", "view", number, "--json", fields, ...scoped]).stdout, operation);
       emit({ provider: "github", operation, repository: repo, item: normalizePullRequest(data) });
     }
     return;

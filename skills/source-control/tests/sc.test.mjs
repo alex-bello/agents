@@ -150,44 +150,111 @@ fi`,
   });
 });
 
-test("normalizes populated and empty Forgejo pull-request comment fixtures", async (t) => {
+test("normalizes populated and empty pull-request comment fixtures across providers", async (t) => {
   const cases = [
-    ["forgejo-pr-comments-populated.json", [{
-      id: 19,
-      author: "alex",
-      body: "Looks good",
-      url: "https://forge.example/owner/project/pulls/18#issuecomment-19",
-      createdAt: "2026-09-14T05:30:00Z",
-      updatedAt: "2026-09-14T05:31:00Z",
-    }]],
-    ["forgejo-pr-comments-empty.txt", []],
+    {
+      provider: "forgejo",
+      fixtureName: "forgejo-pr-comments-populated.json",
+      scripts: {
+        git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+        tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "comments list" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+      },
+      expected: [{
+        id: 19,
+        author: "alex",
+        body: "Looks good",
+        url: "https://forge.example/owner/project/pulls/18#issuecomment-19",
+        createdAt: "2026-09-14T05:30:00Z",
+        updatedAt: "2026-09-14T05:31:00Z",
+      }],
+    },
+    {
+      provider: "github",
+      fixtureName: "github-pr-comments-populated.json",
+      scripts: {
+        git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+        gh: `
+if [ "$1 $2 $3" = "pr view 18" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+      },
+      expected: [{
+        id: 19,
+        author: "alex",
+        body: "Looks good",
+        url: "https://github.com/owner/project/pull/18#issuecomment-19",
+        createdAt: "2026-09-14T05:30:00Z",
+        updatedAt: "2026-09-14T05:31:00Z",
+      }],
+    },
+    {
+      provider: "forgejo",
+      fixtureName: "forgejo-pr-comments-empty.txt",
+      scripts: {
+        git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+        tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "comments list" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+      },
+      expected: [],
+    },
+    {
+      provider: "github",
+      fixtureName: "github-pr-comments-empty.json",
+      scripts: {
+        git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+        gh: `
+if [ "$1 $2 $3" = "pr view 18" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+      },
+      expected: [],
+    },
   ];
 
-  for (const [fixtureName, expected] of cases) {
-    const directory = await fixture(t, {
-      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
-      tea: `
-if [ "$1" = "logins" ]; then
-  printf '%s\\n' '[{"url":"https://forge.example"}]'
-elif [ "$1 $2" = "comments list" ]; then
-  printf '%s' "$SC_TEST_OUTPUT"
-else
-  exit 99
-fi`,
-    });
-    const output = await readFile(path.join(skillRoot, "tests", "fixtures", fixtureName), "utf8");
+  const populatedSchemas = [];
+  for (const testCase of cases) {
+    const directory = await fixture(t, testCase.scripts);
+    const output = await readFile(path.join(skillRoot, "tests", "fixtures", testCase.fixtureName), "utf8");
     const result = invoke(directory, ["pr", "comments", "18"], { SC_TEST_OUTPUT: output });
-    assert.equal(result.status, 0, `${fixtureName}: ${result.stderr}`);
-    assert.deepEqual(JSON.parse(result.stdout), {
-      provider: "forgejo", operation: "pr.comments", repository: "owner/project", number: 18, items: expected,
+    assert.equal(result.status, 0, `${testCase.provider}/${testCase.fixtureName}: ${result.stderr}`);
+    const normalized = JSON.parse(result.stdout);
+    assert.deepEqual(normalized, {
+      provider: testCase.provider, operation: "pr.comments", repository: "owner/project", number: 18, items: testCase.expected,
     });
+    if (testCase.expected.length) {
+      populatedSchemas.push(Object.fromEntries(Object.entries(normalized.items[0]).map(([key, value]) => [
+        key, value === null ? "null" : typeof value,
+      ])));
+    }
   }
+  assert.deepEqual(populatedSchemas[0], populatedSchemas[1]);
 });
 
-test("rejects unsupported Forgejo pull-request comment output without leaking it", async (t) => {
-  const directory = await fixture(t, {
-    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
-    tea: `
+test("rejects unsupported pull-request comment output for both providers without leaking it", async (t) => {
+  for (const testCase of [
+    {
+      provider: "forgejo",
+      fixtureName: "forgejo-pr-comments-malformed.json",
+      scripts: {
+        git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+        tea: `
 if [ "$1" = "logins" ]; then
   printf '%s\\n' '[{"url":"https://forge.example"}]'
 elif [ "$1 $2" = "comments list" ]; then
@@ -195,13 +262,33 @@ elif [ "$1 $2" = "comments list" ]; then
 else
   exit 99
 fi`,
-  });
-  const output = await readFile(path.join(skillRoot, "tests", "fixtures", "forgejo-pr-comments-malformed.json"), "utf8");
-  const result = invoke(directory, ["pr", "comments", "18"], { SC_TEST_OUTPUT: output });
-  assert.equal(result.status, 8, result.stderr);
-  assert.match(result.stderr, /could not normalize pr\.comments output: expected a JSON array or empty output/);
-  assert.doesNotMatch(result.stderr, /fixture-sensitive-marker/);
-  assert.equal(result.stdout, "");
+      },
+      diagnostic: /expected a JSON array or empty output/,
+    },
+    {
+      provider: "github",
+      fixtureName: "github-pr-comments-malformed.json",
+      scripts: {
+        git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+        gh: `
+if [ "$1 $2 $3" = "pr view 18" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+      },
+      diagnostic: /expected a JSON object with a comments array/,
+    },
+  ]) {
+    const directory = await fixture(t, testCase.scripts);
+    const output = await readFile(path.join(skillRoot, "tests", "fixtures", testCase.fixtureName), "utf8");
+    const result = invoke(directory, ["pr", "comments", "18"], { SC_TEST_OUTPUT: output });
+    assert.equal(result.status, 8, `${testCase.provider}: ${result.stderr}`);
+    assert.match(result.stderr, /could not normalize pr\.comments output/);
+    assert.match(result.stderr, testCase.diagnostic);
+    assert.doesNotMatch(result.stderr, /fixture-sensitive-marker/);
+    assert.equal(result.stdout, "");
+  }
 });
 
 test("fails deterministically when provider detection is ambiguous", async (t) => {

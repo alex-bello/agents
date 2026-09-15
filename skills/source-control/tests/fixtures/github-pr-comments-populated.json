@@ -1,0 +1,13 @@
+{
+  "number": 18,
+  "comments": [
+    {
+      "id": 19,
+      "author": { "login": "alex" },
+      "body": "Looks good",
+      "url": "https://github.com/owner/project/pull/18#issuecomment-19",
+      "createdAt": "2026-09-14T05:30:00Z",
+      "updatedAt": "2026-09-14T05:31:00Z"
+    }
+  ]
+}
