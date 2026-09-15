@@ -90,12 +90,13 @@ returns `items: []` with exit status `0`.
 ```
 
 Malformed JSON or a non-array JSON value is a normalization failure (exit
-status `8`). The diagnostic identifies the `pr.comments` operation and the
-expected JSON-array-or-empty shape, but does not print the raw native output,
+status `8`). The diagnostic identifies the `pr.comments` operation, expected
+response shape, and a safe remediation to check the provider capability and
+fixture against this contract. It does not print the raw native output,
 credentials, or authenticated URLs. For example:
 
 ```text
-sc: could not normalize pr.comments output: expected a JSON array or empty output
+sc: could not normalize pr.comments output: expected a JSON array or empty output; safe remediation: check the provider capability and fixture against the source-control command contract
 ```
 
 The compatibility boundary is covered by

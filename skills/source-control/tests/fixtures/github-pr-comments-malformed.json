@@ -1,6 +1,8 @@
 {
   "number": 18,
   "comments": {
-    "unsupported": "fixture-sensitive-marker"
+    "unsupported": "fixture-sensitive-marker",
+    "token": "fixture-provider-token",
+    "url": "https://alex:fixture-secret@github.example/owner/project/pull/18?token=fixture"
   }
 }

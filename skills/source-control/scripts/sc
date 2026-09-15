@@ -55,20 +55,34 @@ function parseJson(text, context) {
   }
 }
 
+function commentNormalizationFailure(context, expectedShape) {
+  fail(EXIT.normalize, `could not normalize ${context} output: expected ${expectedShape}; safe remediation: check the provider capability and fixture against the source-control command contract`);
+}
+
 function parseCommentList(text, context) {
   const trimmed = text.trim();
   if (trimmed === "" || /^no comments(?: found| available)?[.!]?$/i.test(trimmed)) return [];
-  const data = parseJson(trimmed, context);
+  let data;
+  try {
+    data = JSON.parse(trimmed);
+  } catch {
+    commentNormalizationFailure(context, "a JSON array or empty output");
+  }
   if (!Array.isArray(data)) {
-    fail(EXIT.normalize, `could not normalize ${context} output: expected a JSON array or empty output`);
+    commentNormalizationFailure(context, "a JSON array or empty output");
   }
   return data;
 }
 
 function parseGitHubCommentList(text, context) {
-  const data = parseJson(text, context);
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    commentNormalizationFailure(context, "a JSON object with a comments array");
+  }
   if (!data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.comments)) {
-    fail(EXIT.normalize, `could not normalize ${context} output: expected a JSON object with a comments array`);
+    commentNormalizationFailure(context, "a JSON object with a comments array");
   }
   return data.comments;
 }

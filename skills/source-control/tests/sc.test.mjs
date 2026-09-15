@@ -286,7 +286,53 @@ fi`,
     assert.equal(result.status, 8, `${testCase.provider}: ${result.stderr}`);
     assert.match(result.stderr, /could not normalize pr\.comments output/);
     assert.match(result.stderr, testCase.diagnostic);
+    assert.match(result.stderr, /safe remediation: check the provider capability and fixture against the source-control command contract/);
     assert.doesNotMatch(result.stderr, /fixture-sensitive-marker/);
+    assert.doesNotMatch(result.stderr, /fixture-provider-token|fixture-secret|alex:fixture-secret|token=fixture/);
+    assert.equal(result.stdout, "");
+  }
+});
+
+test("reports actionable diagnostics for malformed pull-request comment JSON without leaking it", async (t) => {
+  for (const testCase of [
+    {
+      provider: "forgejo",
+      output: '{"token":"fixture-provider-token","url":"https://alex:fixture-secret@forge.example/owner/project/pulls/18?token=fixture"',
+      scripts: {
+        git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+        tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "comments list" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+      },
+      expected: /expected a JSON array or empty output/,
+    },
+    {
+      provider: "github",
+      output: '{"token":"fixture-provider-token","url":"https://alex:fixture-secret@github.example/owner/project/pull/18?token=fixture"',
+      scripts: {
+        git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+        gh: `
+if [ "$1 $2 $3" = "pr view 18" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+      },
+      expected: /expected a JSON object with a comments array/,
+    },
+  ]) {
+    const directory = await fixture(t, testCase.scripts);
+    const result = invoke(directory, ["pr", "comments", "18"], { SC_TEST_OUTPUT: testCase.output });
+    assert.equal(result.status, 8, `${testCase.provider}: ${result.stderr}`);
+    assert.match(result.stderr, /could not normalize pr\.comments output/);
+    assert.match(result.stderr, testCase.expected);
+    assert.match(result.stderr, /safe remediation: check the provider capability and fixture against the source-control command contract/);
+    assert.doesNotMatch(result.stderr, /fixture-provider-token|fixture-secret|alex:fixture-secret|token=fixture/);
     assert.equal(result.stdout, "");
   }
 });

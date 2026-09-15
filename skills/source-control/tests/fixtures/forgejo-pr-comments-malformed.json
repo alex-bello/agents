@@ -1,3 +1,5 @@
 {
-  "unsupported": "fixture-sensitive-marker"
+  "unsupported": "fixture-sensitive-marker",
+  "token": "fixture-provider-token",
+  "url": "https://alex:fixture-secret@forge.example/owner/project/pulls/18?token=fixture"
 }
