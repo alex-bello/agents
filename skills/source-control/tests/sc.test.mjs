@@ -293,6 +293,100 @@ fi`,
   }
 });
 
+test("aggregates supported paginated Forgejo pull-request comments in stable order", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "comments list" ]; then
+  case "$(printf '%s' "$*" | sed -n 's/.*--page \\([0-9]*\\).*/\\1/p')" in
+    1) printf '%s' "$SC_TEST_PAGE_1" ;;
+    2) printf '%s' "$SC_TEST_PAGE_2" ;;
+    *) exit 99 ;;
+  esac
+else
+  exit 99
+fi`,
+  });
+  const pages = await Promise.all([
+    readFile(path.join(skillRoot, "tests", "fixtures", "forgejo-pr-comments-page-1.json"), "utf8"),
+    readFile(path.join(skillRoot, "tests", "fixtures", "forgejo-pr-comments-page-2.json"), "utf8"),
+  ]);
+  const result = invoke(directory, ["pr", "comments", "18"], {
+    SC_TEST_PAGE_1: pages[0],
+    SC_TEST_PAGE_2: pages[1],
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).items.map((item) => item.id), [19, 20]);
+});
+
+test("terminates Forgejo pagination on repeated page references without duplicate pages", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "comments list" ]; then
+  page=$(printf '%s' "$*" | sed -n 's/.*--page \\([0-9]*\\).*/\\1/p')
+  if [ "$page" = "1" ]; then printf '%s' "$SC_TEST_PAGE_1";
+  elif [ "$page" = "2" ]; then printf '%s' "$SC_TEST_PAGE_2";
+  else exit 99; fi
+else
+  exit 99
+fi`,
+  });
+  const pages = await Promise.all([
+    readFile(path.join(skillRoot, "tests", "fixtures", "forgejo-pr-comments-repeated-page-1.json"), "utf8"),
+    readFile(path.join(skillRoot, "tests", "fixtures", "forgejo-pr-comments-repeated-page-2.json"), "utf8"),
+  ]);
+  const result = invoke(directory, ["pr", "comments", "18"], {
+    SC_TEST_PAGE_1: pages[0],
+    SC_TEST_PAGE_2: pages[1],
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).items.map((item) => item.id), [19, 20]);
+});
+
+test("accepts an empty Forgejo pagination page", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "comments list" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+  });
+  const output = await readFile(path.join(skillRoot, "tests", "fixtures", "forgejo-pr-comments-empty-page.json"), "utf8");
+  const result = invoke(directory, ["pr", "comments", "18"], { SC_TEST_OUTPUT: output });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).items, []);
+});
+
+test("rejects malformed Forgejo pagination metadata without leaking it", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "comments list" ]; then
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+  });
+  const output = await readFile(path.join(skillRoot, "tests", "fixtures", "forgejo-pr-comments-malformed-pagination.json"), "utf8");
+  const result = invoke(directory, ["pr", "comments", "18"], { SC_TEST_OUTPUT: output });
+  assert.equal(result.status, 8, result.stderr);
+  assert.match(result.stderr, /could not normalize pr\.comments output/);
+  assert.match(result.stderr, /pagination\.next to be null or a positive integer page number/);
+  assert.doesNotMatch(result.stderr, /fixture-provider-token|fixture-secret|token=fixture/);
+  assert.equal(result.stdout, "");
+});
+
 test("reports actionable diagnostics for malformed pull-request comment JSON without leaking it", async (t) => {
   for (const testCase of [
     {

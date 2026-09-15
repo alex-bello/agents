@@ -14,6 +14,9 @@ const EXIT = {
   normalize: 8,
 };
 
+const COMMENT_PAGE_SIZE = 30;
+const MAX_COMMENT_PAGES = 100;
+
 function fail(code, message) {
   process.stderr.write(`sc: ${message}\n`);
   process.exit(code);
@@ -72,6 +75,68 @@ function parseCommentList(text, context) {
     commentNormalizationFailure(context, "a JSON array or empty output");
   }
   return data;
+}
+
+function parseForgejoCommentPage(text, context) {
+  const trimmed = text.trim();
+  if (trimmed === "" || /^no comments(?: found| available)?[.!]?$/i.test(trimmed)) {
+    return { comments: [], nextPage: null };
+  }
+
+  let data;
+  try {
+    data = JSON.parse(trimmed);
+  } catch {
+    commentNormalizationFailure(context, "a JSON array or empty output");
+  }
+
+  if (Array.isArray(data)) {
+    return {
+      comments: data,
+      nextPage: data.length === COMMENT_PAGE_SIZE ? "implicit" : null,
+    };
+  }
+
+  if (!data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.comments)) {
+    commentNormalizationFailure(context, "a JSON array or empty output");
+  }
+
+  if (!data.pagination || typeof data.pagination !== "object" || Array.isArray(data.pagination)) {
+    commentNormalizationFailure(context, "a JSON array or an object with comments and pagination.next");
+  }
+
+  const nextPage = data.pagination.next;
+  if (nextPage !== null && (!Number.isInteger(nextPage) || nextPage < 1)) {
+    commentNormalizationFailure(context, "pagination.next to be null or a positive integer page number");
+  }
+
+  return { comments: data.comments, nextPage };
+}
+
+function parseForgejoCommentPages(number, scoped, operation) {
+  const comments = [];
+  const seenPages = new Set();
+  let page = 1;
+
+  for (let count = 0; count < MAX_COMMENT_PAGES; count += 1) {
+    const pageReference = page;
+    if (seenPages.has(pageReference)) return comments;
+    seenPages.add(pageReference);
+
+    const nativeArgs = ["comments", "list", number, "--output", "json", "--limit", String(COMMENT_PAGE_SIZE), "--page", String(page), ...scoped];
+    const parsed = parseForgejoCommentPage(run("tea", nativeArgs).stdout, operation);
+    comments.push(...parsed.comments);
+
+    if (parsed.nextPage === null) return comments;
+    if (parsed.nextPage === "implicit") {
+      page += 1;
+      continue;
+    }
+    if (seenPages.has(parsed.nextPage)) return comments;
+    page = parsed.nextPage;
+  }
+
+  commentNormalizationFailure(operation, `pagination traversal to remain within ${MAX_COMMENT_PAGES} pages`);
 }
 
 function parseGitHubCommentList(text, context) {
@@ -714,7 +779,9 @@ function forgejo(operation, args, options) {
   }
   if (operation === "issue.comments" || operation === "pr.comments") {
     const number = requireValue(args[0], `${operation.split(".")[0]} number`);
-    const data = parseCommentList(run("tea", ["comments", "list", number, "--output", "json", ...scoped]).stdout, operation);
+    const data = operation === "pr.comments"
+      ? parseForgejoCommentPages(number, scoped, operation)
+      : parseCommentList(run("tea", ["comments", "list", number, "--output", "json", ...scoped]).stdout, operation);
     emit({ provider: "forgejo", operation, repository: repo, number: Number(number), items: data.map(normalizeComment) });
     return;
   }

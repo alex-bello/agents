@@ -52,8 +52,26 @@ effect.
 `pr comments NUMBER` invokes Tea as:
 
 ```text
-tea comments list NUMBER --output json
+tea comments list NUMBER --output json --limit 30 --page 1
 ```
+
+The wrapper requests subsequent pages with the same command and an incremented
+or provider-supplied `--page` value. Native array output remains supported; a
+page shorter than 30 comments, an empty page, or the documented empty response
+ends traversal. For deterministic pagination-aware integrations, the wrapper
+also accepts this page envelope:
+
+```json
+{
+  "comments": [],
+  "pagination": { "next": 2 }
+}
+```
+
+`pagination.next` must be `null` when there is no next page or a positive
+integer page number. A repeated page reference ends traversal before that page
+is fetched again. Missing or malformed pagination metadata, invalid page
+numbers, or more than 100 pages fail conservatively with a safe diagnostic.
 
 The Forgejo adapter supports these native response forms:
 
@@ -89,11 +107,12 @@ returns `items: []` with exit status `0`.
 }
 ```
 
-Malformed JSON or a non-array JSON value is a normalization failure (exit
-status `8`). The diagnostic identifies the `pr.comments` operation, expected
-response shape, and a safe remediation to check the provider capability and
-fixture against this contract. It does not print the raw native output,
-credentials, or authenticated URLs. For example:
+Malformed JSON, a non-array/non-envelope JSON value, or malformed pagination
+metadata is a normalization failure (exit status `8`). The diagnostic
+identifies the `pr.comments` operation, expected response shape, and a safe
+remediation to check the provider capability and fixture against this
+contract. It does not print the raw native output, credentials, or
+authenticated URLs. For example:
 
 ```text
 sc: could not normalize pr.comments output: expected a JSON array or empty output; safe remediation: check the provider capability and fixture against the source-control command contract
