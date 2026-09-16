@@ -40,7 +40,16 @@ the target application's agent format.
 ├── scripts/
 │   └── validate.mjs         # Repository validation
 ├── skills/
-│   └── thin-slice/
+│   ├── sdlc/
+│   │   ├── sdlc/            # Shared SDLC contract and config validator
+│   │   ├── sdlc-setup/      # Repository foundation
+│   │   ├── sdlc-wayfinder/  # Planning and requirements
+│   │   ├── sdlc-design/     # Code-informed system design
+│   │   ├── sdlc-implement/  # One work-item implementation
+│   │   ├── sdlc-orchestrate/# Single-item and batch delivery
+│   │   ├── sdlc-reconcile/  # Post-merge tracking updates
+│   │   └── sdlc-audit/      # Read-only lifecycle audit
+│   └── thin-slice/          # Legacy compatibility workflow
 │       ├── thin-slice/      # Core thin-slice workflow
 │       ├── thin-slice-setup/ # Repository lifecycle setup
 │       ├── thin-slice-audit/ # Lifecycle traceability audit
@@ -87,7 +96,7 @@ update; the skills installer does not use it to resolve dependencies.
 ## Add a skill
 
 1. Create `skills/<skill-name>/SKILL.md`, or place related skills under an
-   existing lifecycle directory such as `skills/thin-slice/<skill-name>/`.
+   existing lifecycle directory such as `skills/sdlc/<skill-name>/`.
 2. Use a lowercase, hyphenated name that matches the directory.
 3. Write a specific description that explains both capability and trigger.
 4. Put detailed workflow instructions in the body.

@@ -25,3 +25,15 @@ diagnostics. Their role-specific mutation boundaries are enforced by the
 orchestrator: implementation is local-only, while review permits at most one
 structured general PR comment for a matching pass. The handoff fixtures live in
 `skills/thin-slice/thin-slice/tests/handoff-schemas.test.mjs`.
+
+## Portable SDLC agents
+
+- [`sdlc-implementation-agent.md`](sdlc-implementation-agent.md) — implements
+  one SDLC work item and returns a strict handoff without provider mutations.
+- [`sdlc-review-agent.md`](sdlc-review-agent.md) — performs one read-only
+  correctness or risk review and returns structured findings to the
+  orchestrator.
+
+SDLC reviewers do not post individual comments; the orchestrator aggregates
+their results into one comment per PR pass. The SDLC handoff contracts support
+feature/work-item provenance, reviewer identity, and batch run recovery.

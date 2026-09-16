@@ -1,4 +1,10 @@
-# Thin-slice framework
+# Thin-slice framework (legacy compatibility)
+
+The unified SDLC workflow in `skills/sdlc/` supersedes thin-slice for new
+work. Thin-slice remains readable and usable for existing records, and is now
+the smallest delivery flavor in the SDLC model. New repositories should use
+`sdlc-setup`, `sdlc-wayfinder`, `sdlc-design`, `sdlc-orchestrate`, and
+`sdlc-reconcile`.
 
 Thin-slice is a planning and delivery framework for turning an idea into a
 complete, verifiable outcome through small increments. “Thin” applies to every
