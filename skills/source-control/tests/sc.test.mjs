@@ -80,6 +80,104 @@ test("normalizes GitHub pull-request branch metadata", async (t) => {
   });
 });
 
+test("lists Forgejo pull requests with optional Tea draft-field support", async (t) => {
+  const cases = [
+    {
+      fixtureName: "forgejo-pr-list-with-draft.json",
+      unavailableDraft: false,
+      draft: true,
+      expectedListCalls: 1,
+    },
+    {
+      fixtureName: "forgejo-pr-list-without-draft.json",
+      unavailableDraft: true,
+      draft: null,
+      expectedListCalls: 2,
+    },
+    {
+      fixtureName: "forgejo-pr-list-with-draft.json",
+      failure: "temporary provider failure",
+      expectedListCalls: 1,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const directory = await fixture(t, {
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "pulls list" ]; then
+  printf '%s\\n' "$*" >> "$SC_TEST_CALLS"
+  case "$*" in
+    *draft*)
+      if [ -n "$SC_TEST_FAILURE" ]; then
+        printf '%s\\n' "$SC_TEST_FAILURE" >&2
+        exit 1
+      fi
+      if [ "$SC_TEST_UNAVAILABLE_DRAFT" = "true" ]; then
+        printf '%s\\n' "Error: invalid field 'draft'" >&2
+        exit 1
+      fi
+      ;;
+  esac
+  printf '%s' "$SC_TEST_OUTPUT"
+else
+  exit 99
+fi`,
+    });
+    const output = await readFile(path.join(skillRoot, "tests", "fixtures", testCase.fixtureName), "utf8");
+    const callsFile = path.join(directory, "tea-calls.txt");
+    const result = invoke(directory, ["pr", "list", "--state", "open"], {
+      SC_TEST_CALLS: callsFile,
+      SC_TEST_OUTPUT: output,
+      SC_TEST_UNAVAILABLE_DRAFT: String(testCase.unavailableDraft),
+      SC_TEST_FAILURE: testCase.failure ?? "",
+    });
+    if (testCase.failure) {
+      assert.equal(result.status, 7);
+      assert.match(result.stderr, /temporary provider failure/);
+      assert.equal(result.stdout, "");
+      const listCalls = (await readFile(callsFile, "utf8")).trim().split("\n");
+      assert.equal(listCalls.length, testCase.expectedListCalls);
+      assert.match(listCalls[0], /--fields .*draft,ci/);
+      continue;
+    }
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      provider: "forgejo",
+      operation: "pr.list",
+      repository: "owner/project",
+      items: [{
+        number: 145,
+        title: "Existing PR",
+        body: "PR body",
+        state: "open",
+        author: "alex",
+        url: "https://forge.example/owner/project/pulls/145",
+        labels: ["thin-slice"],
+        createdAt: "2026-09-15T10:00:00Z",
+        updatedAt: "2026-09-16T10:00:00Z",
+        base: "main",
+        head: "codex/issue-145",
+        draft: testCase.draft,
+        mergeable: "MERGEABLE",
+      }],
+    });
+
+    const listCalls = (await readFile(callsFile, "utf8")).trim().split("\n");
+    assert.equal(listCalls.length, testCase.expectedListCalls);
+    assert.match(listCalls[0], /--state open/);
+    assert.match(listCalls[0], /--fields index,title,body,state,author,url,labels,created,updated,base,head,mergeable,draft,ci/);
+    if (testCase.unavailableDraft) {
+      assert.match(listCalls[1], /--state open/);
+      assert.match(listCalls[1], /--fields index,title,body,state,author,url,labels,created,updated,base,head,mergeable,ci/);
+      assert.doesNotMatch(listCalls[1], /draft/);
+    }
+  }
+});
+
 test("lists and creates Forgejo labels", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',

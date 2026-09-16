@@ -1,0 +1,17 @@
+[
+  {
+    "index": 145,
+    "title": "Existing PR",
+    "body": "PR body",
+    "state": "open",
+    "author": "alex",
+    "url": "https://forge.example/owner/project/pulls/145",
+    "labels": ["thin-slice"],
+    "created": "2026-09-15T10:00:00Z",
+    "updated": "2026-09-16T10:00:00Z",
+    "base": "main",
+    "head": "codex/issue-145",
+    "mergeable": "MERGEABLE",
+    "ci": "success"
+  }
+]

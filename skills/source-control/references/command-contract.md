@@ -145,6 +145,12 @@ Common item fields are `number`, `title`, `body`, `state`, `author`, `url`,
 `labels`, `createdAt`, and `updatedAt`. Fields unavailable from a provider are
 `null` or omitted. Provider-specific response objects are not exposed.
 
+Forgejo `pr.list` requests draft metadata when Tea supports the `draft` list
+field. Tea 0.14.1's supported pull fields do not include `draft`, so if Tea
+explicitly rejects that field as invalid, the wrapper retries the list without
+it. Other Tea failures are returned normally. Draft status then normalizes to
+`null`, while any other fields returned by Tea are retained.
+
 `pr diff` is JSON with a `diff` string. `auth status` contains
 `authenticated`. Edit and comment operations contain `success` and, when the
 native CLI returns one, `url`. Issue close contains `number` and `success`.

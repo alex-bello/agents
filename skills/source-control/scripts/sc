@@ -46,6 +46,30 @@ function run(name, args, { allowFailure = false } = {}) {
   return result;
 }
 
+function runForgejoPullList(args) {
+  const result = run("tea", args, { allowFailure: true });
+  if (result.status === 0) return result.stdout;
+  if (!/invalid field ['\"]draft['\"]/i.test(result.stderr)) {
+    if (result.stderr) process.stderr.write(result.stderr);
+    fail(EXIT.native, `tea command failed with exit code ${result.status ?? "unknown"}`);
+  }
+
+  const fallbackArgs = [...args];
+  const fieldsIndex = fallbackArgs.indexOf("--fields");
+  const fields = fieldsIndex >= 0 ? fallbackArgs[fieldsIndex + 1]?.split(",") ?? [] : [];
+  if (!fields.includes("draft")) {
+    if (result.stderr) process.stderr.write(result.stderr);
+    fail(EXIT.native, `tea command failed with exit code ${result.status ?? "unknown"}`);
+  }
+  fallbackArgs[fieldsIndex + 1] = fields.filter((field) => field !== "draft").join(",");
+  const fallback = run("tea", fallbackArgs, { allowFailure: true });
+  if (fallback.status !== 0) {
+    if (fallback.stderr) process.stderr.write(fallback.stderr);
+    fail(EXIT.native, `tea command failed with exit code ${fallback.status ?? "unknown"}`);
+  }
+  return fallback.stdout;
+}
+
 function nativeCommand(name, args) {
   return [name, ...args].map((value) => /\s/.test(value) ? JSON.stringify(value) : value).join(" ");
 }
@@ -762,7 +786,8 @@ function forgejo(operation, args, options) {
     const native = [entity, "list", "--limit", String(options.limit), "--state", parsed.state || "open",
       "--fields", fields, "--output", "json", ...scoped];
     if (parsed.label?.length) native.push("--labels", parsed.label.join(","));
-    const data = parseJson(run("tea", native).stdout, operation);
+    const output = operation === "pr.list" ? runForgejoPullList(native) : run("tea", native).stdout;
+    const data = parseJson(output, operation);
     emit({ provider: "forgejo", operation, repository: repo, items: data.map(normalizePullRequest) });
     return;
   }
