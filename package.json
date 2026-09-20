@@ -1,9 +1,10 @@
 {
   "name": "agents",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "private": true,
   "description": "Reusable Agent Skills and custom agent definitions",
   "scripts": {
+    "sc": "node skills/source-control/scripts/sc",
     "test": "node scripts/validate.mjs && node --test skills/thin-slice/thin-slice/tests/*.test.mjs skills/sdlc/sdlc/tests/*.test.mjs",
     "validate": "node scripts/validate.mjs",
     "thin-slice:validate-config": "node skills/thin-slice/thin-slice/scripts/validate-config.mjs",
