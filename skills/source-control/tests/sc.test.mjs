@@ -226,26 +226,97 @@ fi`,
   assert.deepEqual(output.items[0].labels, ["help wanted"]);
 });
 
-test("uses structured Forgejo repository listing for repo view", async (t) => {
+test("returns null visibility when Forgejo does not report it", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
     tea: `
 if [ "$1" = "logins" ]; then
   printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "repos list" ]; then
+  printf '%s' "$SC_TEST_LIST"
+elif [ "$1 $2" = "repos search" ]; then
+  printf '%s' '[]'
 else
-  printf '%s\\n' '[{"owner":"owner","name":"project","description":"Example","url":"https://forge.example/owner/project","type":"source"}]'
+  exit 99
 fi`,
   });
-  const result = invoke(directory, ["repo", "view"]);
+  const result = invoke(directory, ["repo", "view"], {
+    SC_TEST_LIST: '[{"owner":"owner","name":"project","description":"Example","url":"https://forge.example/owner/project","type":"source"}]',
+  });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout).item, {
     name: "owner/project",
     description: "Example",
     url: "https://forge.example/owner/project",
-    visibility: "public",
+    visibility: null,
     fork: false,
     defaultBranch: null,
   });
+});
+
+test("classifies Forgejo visibility from explicit tea search filters and preserves a reported default branch", async (t) => {
+  for (const visibility of ["private", "public"]) {
+    const directory = await fixture(t, {
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "repos list" ]; then
+  printf '%s' "$SC_TEST_LIST"
+elif [ "$1 $2" = "repos search" ]; then
+  case "$*" in
+    *"--private true"*) printf '%s' "$SC_TEST_PRIVATE" ;;
+    *"--private false"*) printf '%s' "$SC_TEST_PUBLIC" ;;
+    *) exit 99 ;;
+  esac
+else
+  exit 99
+fi`,
+    });
+    const result = invoke(directory, ["repo", "view"], {
+      SC_TEST_LIST: '[{"owner":"owner","name":"project","description":"Example","url":"https://forge.example/owner/project","type":"source","default_branch":"trunk"}]',
+      SC_TEST_PRIVATE: visibility === "private" ? '[{"owner":"owner","name":"project"}]' : "[]",
+      SC_TEST_PUBLIC: visibility === "public" ? '[{"owner":"owner","name":"project"}]' : "[]",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).item.visibility, visibility);
+    assert.equal(JSON.parse(result.stdout).item.defaultBranch, "trunk");
+  }
+});
+
+test("paginates Forgejo repository listing and reports a repository missing from all pages", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "repos list" ]; then
+  case "$*" in
+    *"--page 1"*) printf '%s' "$SC_TEST_PAGE_ONE" ;;
+    *"--page 2"*) printf '%s' '[{"owner":"owner","name":"project"}]' ;;
+    *) printf '%s' '[]' ;;
+  esac
+elif [ "$1 $2" = "repos search" ]; then
+  printf '%s' '[]'
+else
+  exit 99
+fi`,
+  });
+  const firstPage = JSON.stringify(Array.from({ length: 100 }, (_, index) => ({ owner: "owner", name: `other-${index}` })));
+  const found = invoke(directory, ["repo", "view"], { SC_TEST_PAGE_ONE: firstPage });
+  assert.equal(found.status, 0, found.stderr);
+  assert.equal(JSON.parse(found.stdout).item.name, "owner/project");
+
+  const missingDirectory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "repos list" ]; then printf '%s' '[]';
+else exit 99; fi`,
+  });
+  const missing = invoke(missingDirectory, ["repo", "view"]);
+  assert.equal(missing.status, 8);
+  assert.match(missing.stderr, /repository not found/);
 });
 
 test("normalizes populated and empty pull-request comment fixtures across providers", async (t) => {

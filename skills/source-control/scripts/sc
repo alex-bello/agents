@@ -16,6 +16,8 @@ const EXIT = {
 
 const COMMENT_PAGE_SIZE = 30;
 const MAX_COMMENT_PAGES = 100;
+const REPO_SEARCH_PAGE_SIZE = 100;
+const MAX_REPO_SEARCH_PAGES = 100;
 
 function fail(code, message) {
   process.stderr.write(`sc: ${message}\n`);
@@ -161,6 +163,33 @@ function parseForgejoCommentPages(number, scoped, operation) {
   }
 
   commentNormalizationFailure(operation, `pagination traversal to remain within ${MAX_COMMENT_PAGES} pages`);
+}
+
+function findForgejoRepository(owner, name, isPrivate, operation) {
+  for (let page = 1; page <= MAX_REPO_SEARCH_PAGES; page += 1) {
+    const output = run("tea", ["repos", "search", name, "--owner", owner, "--private", String(isPrivate),
+      "--fields", "description,name,owner,url,permission,type", "--limit", String(REPO_SEARCH_PAGE_SIZE),
+      "--page", String(page), "--output", "json"]).stdout;
+    const data = parseJson(output, operation);
+    if (!Array.isArray(data)) fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
+    const item = data.find((candidate) => candidate.name === name && scalar(candidate.owner) === owner);
+    if (item) return item;
+    if (data.length < REPO_SEARCH_PAGE_SIZE) return null;
+  }
+  fail(EXIT.normalize, `could not normalize ${operation} output: repository search exceeded ${MAX_REPO_SEARCH_PAGES} pages`);
+}
+
+function listForgejoRepository(owner, name, operation) {
+  for (let page = 1; page <= MAX_REPO_SEARCH_PAGES; page += 1) {
+    const output = run("tea", ["repos", "list", "--owner", owner, "--limit", String(REPO_SEARCH_PAGE_SIZE),
+      "--page", String(page), "--fields", "description,name,owner,url,permission,type", "--output", "json"]).stdout;
+    const data = parseJson(output, operation);
+    if (!Array.isArray(data)) fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
+    const item = data.find((candidate) => candidate.name === name && scalar(candidate.owner) === owner);
+    if (item) return item;
+    if (data.length < REPO_SEARCH_PAGE_SIZE) return null;
+  }
+  fail(EXIT.normalize, `could not normalize ${operation} output: repository listing exceeded ${MAX_REPO_SEARCH_PAGES} pages`);
 }
 
 function parseGitHubCommentList(text, context) {
@@ -766,13 +795,19 @@ function forgejo(operation, args, options) {
   if (operation === "repo.view") {
     if (!repo) fail(EXIT.detection, "repository could not be determined; pass --repo OWNER/NAME");
     const [owner, name] = repo.split("/");
-    const data = parseJson(run("tea", ["repos", "list", "--owner", owner, "--limit", "100",
-      "--fields", "description,name,owner,url,permission,type", "--output", "json"]).stdout, operation);
-    const item = data.find((candidate) => candidate.name === name);
-    if (!item) fail(EXIT.normalize, `repository not found in structured tea output: ${repo}`);
+    const item = listForgejoRepository(owner, name, operation);
+    if (!item) fail(EXIT.normalize, `repository not found in structured tea search output: ${repo}`);
+    let visibility = null;
+    if (typeof item.private === "boolean") {
+      visibility = item.private ? "private" : "public";
+    } else {
+      const privateMatch = findForgejoRepository(owner, name, true, operation);
+      const publicMatch = findForgejoRepository(owner, name, false, operation);
+      if (Boolean(privateMatch) !== Boolean(publicMatch)) visibility = privateMatch ? "private" : "public";
+    }
     emit({ provider: "forgejo", operation, repository: repo, item: {
       name: `${scalar(item.owner, owner)}/${item.name ?? name}`,
-      description: item.description ?? null, url: item.url ?? null, visibility: item.private ? "private" : "public",
+      description: item.description ?? null, url: item.url ?? null, visibility,
       fork: (item.type ?? "").toLowerCase() === "fork", defaultBranch: item.default_branch ?? item.defaultBranch ?? null,
     } });
     return;

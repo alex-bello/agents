@@ -1,12 +1,13 @@
 # Capability matrix
 
-The v1 contract targets behavior confirmed for `tea` 0.14 and `gh` 2.96.
+The v1 contract targets behavior confirmed for `tea` 0.15.1 (repository view
+checked 2026-09-28) and `gh` 2.96.
 
 | Capability | Forgejo (`tea`) | GitHub (`gh`) |
 | --- | --- | --- |
 | Detect provider from Git remote | yes | yes |
 | Authentication status | yes | yes |
-| Repository view | yes | yes |
+| Repository view | yes; visibility may be `null` if Tea's explicit private/public search filters do not uniquely identify the repository; default branch is `null` when Tea does not report it | yes |
 | Local branch creation, switching, fetch, and push | Git-native | Git-native |
 | Issue list/view/comments | yes | yes |
 | Issue create/edit/close/comment | yes | yes |

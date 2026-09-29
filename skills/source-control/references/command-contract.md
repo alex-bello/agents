@@ -151,6 +151,24 @@ explicitly rejects that field as invalid, the wrapper retries the list without
 it. Other Tea failures are returned normally. Draft status then normalizes to
 `null`, while any other fields returned by Tea are retained.
 
+Forgejo `repo.view` uses `tea repos list` with owner-scoped pagination to find
+the exact repository. Tea 0.15.1's supported repository fields do not include
+`private` or a default branch. The wrapper checks the exact repository against
+`tea repos search --private true` and `--private false`; visibility is
+`"private"` or `"public"` only when exactly one filtered search returns it.
+If neither or both searches return the exact repository and the list result has
+no boolean `private` field, `visibility` is `null`. `defaultBranch` is `null`
+when Tea does not return `default_branch` or `defaultBranch`. The direct
+`tea repos OWNER/NAME --output json` detail command was verified to print a
+human-readable view, not structured JSON. Tea 0.15.1 was checked on
+2026-09-28; it has no structured repository command that reports the default
+branch.
+
+Forgejo `repo.view` therefore returns `visibility` as a string or `null`, and
+`defaultBranch` as a string or `null`. The list command only covers
+repositories the configured Tea login can access; an inaccessible repository
+is reported as not found after the supported listing pages are exhausted.
+
 `pr diff` is JSON with a `diff` string. `auth status` contains
 `authenticated`. Edit and comment operations contain `success` and, when the
 native CLI returns one, `url`. Issue close contains `number` and `success`.
