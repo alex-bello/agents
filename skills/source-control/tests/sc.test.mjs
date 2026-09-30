@@ -348,6 +348,57 @@ fi`,
   }
 });
 
+test("paginates Forgejo visibility searches and classifies a repository found on page two", async (t) => {
+  const firstPage = JSON.stringify(Array.from({ length: 100 }, (_, index) => ({
+    owner: "owner",
+    name: `other-${index}`,
+  })));
+
+  for (const visibility of ["private", "public"]) {
+    const directory = await fixture(t, {
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: `
+if [ "$1" = "logins" ]; then
+  printf '%s\\n' '[{"url":"https://forge.example"}]'
+elif [ "$1 $2" = "repos list" ]; then
+  printf '%s' '[{"owner":"owner","name":"project"}]'
+elif [ "$1 $2" = "repos search" ]; then
+  printf '%s\\n' "$*" >> "$SC_TEST_SEARCH_CALLS"
+  case "$*" in
+    *"--private true"*)
+      case "$*" in
+        *"--page 1"*) printf '%s' "$SC_TEST_PRIVATE_PAGE_ONE" ;;
+        *"--page 2"*) printf '%s' "$SC_TEST_PRIVATE_PAGE_TWO" ;;
+        *) exit 99 ;;
+      esac ;;
+    *"--private false"*)
+      case "$*" in
+        *"--page 1"*) printf '%s' "$SC_TEST_PUBLIC_PAGE_ONE" ;;
+        *"--page 2"*) printf '%s' "$SC_TEST_PUBLIC_PAGE_TWO" ;;
+        *) exit 99 ;;
+      esac ;;
+    *) exit 99 ;;
+  esac
+else
+  exit 99
+fi`,
+    });
+    const selectedPageTwo = JSON.stringify([{ owner: "owner", name: "project" }]);
+    const result = invoke(directory, ["repo", "view"], {
+      SC_TEST_SEARCH_CALLS: path.join(directory, "search-calls.txt"),
+      SC_TEST_PRIVATE_PAGE_ONE: firstPage,
+      SC_TEST_PRIVATE_PAGE_TWO: visibility === "private" ? selectedPageTwo : "[]",
+      SC_TEST_PUBLIC_PAGE_ONE: firstPage,
+      SC_TEST_PUBLIC_PAGE_TWO: visibility === "public" ? selectedPageTwo : "[]",
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).item.visibility, visibility);
+    const calls = await readFile(path.join(directory, "search-calls.txt"), "utf8");
+    assert.match(calls, new RegExp(`--private ${visibility === "private" ? "true" : "false"} .*--page 2`));
+  }
+});
+
 test("paginates Forgejo repository listing and reports a repository missing from all pages", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
