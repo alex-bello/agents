@@ -1,5 +1,21 @@
 # Common workflows
 
+Build and run the standalone CLI from the repository root:
+
+```sh
+pnpm run sc:build
+./dist/sc --help
+./dist/sc issue view 42
+```
+
+For development, run the TypeScript source through Bun. The installed skill
+continues to use the generated Node-compatible `scripts/sc` entry point:
+
+```sh
+pnpm run sc:dev -- issue view 42
+scripts/sc issue view 42
+```
+
 Inspect an issue without fetching unnecessary comments:
 
 ```sh

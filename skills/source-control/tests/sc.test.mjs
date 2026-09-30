@@ -7,7 +7,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const sc = path.join(skillRoot, "scripts", "sc");
+const sc = process.env.SC_BIN
+  ? path.resolve(process.cwd(), process.env.SC_BIN)
+  : path.join(skillRoot, "scripts", "sc");
 
 async function mockExecutable(directory, name, source) {
   const target = path.join(directory, name);
@@ -25,11 +27,73 @@ async function fixture(t, scripts) {
 }
 
 function invoke(directory, args, environment = {}) {
-  return spawnSync(process.execPath, [sc, ...args], {
+  const command = process.env.SC_BIN ? sc : process.execPath;
+  const commandArgs = process.env.SC_BIN ? args : [sc, ...args];
+  return spawnSync(command, commandArgs, {
     encoding: "utf8",
-    env: { ...process.env, ...environment, PATH: `${directory}:${process.env.PATH}` },
+    cwd: process.env.SC_BIN ? directory : process.cwd(),
+    env: { ...process.env, ...environment, PATH: environment.PATH ?? `${directory}:${process.env.PATH}` },
   });
 }
+
+test("help and version work without provider tools or a Git remote", async (t) => {
+  const directory = await fixture(t, {});
+  const help = invoke(directory, ["--help"]);
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /Usage: sc/);
+  assert.equal(help.stderr, "");
+  const version = invoke(directory, ["--version"]);
+  assert.equal(version.status, 0, version.stderr);
+  assert.match(version.stdout, /^sc \d+\.\d+\.\d+\n$/);
+  assert.equal(version.stderr, "");
+});
+
+test("native diagnostics redact environment values, body contents, and credential URLs", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'printf "%s\\n" "failure https://user:password@github.com/owner/project?token=topsecret body=private-body $SC_TEST_SECRET" >&2; exit 1',
+  });
+  const bodyFile = path.join(directory, "body.md");
+  await writeFile(bodyFile, "private-body");
+  const result = invoke(directory, ["issue", "create", "--title", "Test", "--body-file", bodyFile], {
+    SC_TEST_SECRET: "environment-secret-value",
+  });
+  assert.equal(result.status, 7);
+  assert.doesNotMatch(result.stderr, /password|topsecret|private-body|environment-secret-value/);
+  assert.match(result.stderr, /\[redacted\]/);
+  assert.equal(result.stdout, "");
+});
+
+test("fails with the missing-dependency exit code when a provider executable is unavailable", async (t) => {
+  const directory = await fixture(t, { git: "exit 1" });
+  const result = invoke(directory, ["--provider", "github", "auth", "status"], { PATH: directory });
+  assert.equal(result.status, 5);
+  assert.match(result.stderr, /required executable not found: gh/);
+  assert.equal(result.stdout, "");
+});
+
+test("redacts credentials and secret URL parameters from normalized JSON", async (t) => {
+  const directory = await fixture(t, {
+    gh: `printf '%s\\n' '{"number":3,"title":"Example","url":"https://user:password@github.com/owner/project/issues/3?token=private-token"}'`,
+  });
+  const result = invoke(directory, ["--provider", "github", "issue", "view", "3"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /password|private-token/);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.item.url, "https://[redacted]@github.com/owner/project/issues/3?token=[redacted]");
+});
+
+test("preserves ordinary environment values in normalized repository output", async (t) => {
+  const directory = await fixture(t, {
+    gh: `printf '%s\\n' '{"nameWithOwner":"operator/agents","url":"https://github.com/operator/agents","visibility":"PUBLIC"}'`,
+  });
+  const result = invoke(directory, ["--provider", "github", "repo", "view"], { SC_TEST_NAME: "agents" });
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.repository, "operator/agents");
+  assert.equal(output.item.name, "operator/agents");
+  assert.equal(output.item.url, "https://github.com/operator/agents");
+});
 
 test("detects GitHub from origin without calling gh", async (t) => {
   const directory = await fixture(t, {

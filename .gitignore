@@ -19,6 +19,7 @@
 # Node.js
 node_modules/
 npm-debug.log*
+dist/
 
 # PNPM
 .pnpm-store/

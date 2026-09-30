@@ -5,7 +5,10 @@
   "description": "Reusable Agent Skills and custom agent definitions",
   "scripts": {
     "sc": "node skills/source-control/scripts/sc",
-    "test": "node scripts/validate.mjs && node --test skills/thin-slice/thin-slice/tests/*.test.mjs skills/sdlc/sdlc/tests/*.test.mjs",
+    "sc:dev": "bun skills/source-control/src/cli.ts",
+    "sc:build": "node skills/source-control/scripts/build.mjs",
+    "sc:test": "pnpm run sc:build && node --test skills/source-control/tests/sc.test.mjs && SC_BIN=dist/sc node --test skills/source-control/tests/sc.test.mjs",
+    "test": "node scripts/validate.mjs && node --test skills/thin-slice/thin-slice/tests/*.test.mjs skills/sdlc/sdlc/tests/*.test.mjs && pnpm run sc:test",
     "validate": "node scripts/validate.mjs",
     "thin-slice:validate-config": "node skills/thin-slice/thin-slice/scripts/validate-config.mjs",
     "sdlc:validate-config": "node skills/sdlc/sdlc/scripts/validate-config.mjs",

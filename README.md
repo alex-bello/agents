@@ -2,6 +2,26 @@
 
 A Git-backed library of reusable Agent Skills and custom agent definitions.
 
+## Source-control CLI development
+
+The source-control CLI is authored in TypeScript at
+`skills/source-control/src/cli.ts`. Its generated
+`skills/source-control/scripts/sc` bundle runs on the repository's supported
+Node version and remains the entry point for installed skills. Build both the
+compatibility bundle and a standalone executable for the current host with:
+
+```sh
+pnpm run sc:build
+./dist/sc --help
+```
+
+`dist/sc` is local build output and is not committed. The binary still uses
+`git`, `gh`, and `tea` from `PATH` for repository discovery and provider
+operations. Run the source through Bun during development with
+`pnpm run sc:dev -- <arguments>`. `pnpm run sc:test` runs source-control
+regression checks against both the Node-compatible script and the standalone
+binary; `pnpm test` includes those checks.
+
 ## Install skills
 
 List the skills available in this repository:

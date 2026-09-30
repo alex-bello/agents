@@ -11,6 +11,16 @@ constructing `tea`, `gh`, or HTTP API commands for provider-level operations.
 The wrapper detects Forgejo or GitHub, calls the corresponding CLI
 noninteractively, and returns normalized JSON.
 
+The command implementation is maintained in `src/cli.ts`. `scripts/sc` is the
+generated Node-compatible bundle used by installed skills, so invoking it does
+not require Bun. From the repository root, `pnpm run sc:build` regenerates that
+bundle and produces a host-specific standalone executable at `dist/sc`. Use
+`pnpm run sc:dev -- <arguments>` to run the TypeScript source through Bun, or
+run `./dist/sc <arguments>` after building. The standalone executable still
+uses `git`, `gh`, and `tea` from `PATH` for repository and provider operations.
+Use `--help` and `--version` to inspect the CLI; both work without a provider
+configuration.
+
 Git-native operations include status, diff, log, show, remotes, fetch, pull,
 push, branch creation/listing, switch/checkout, add, commit, merge, rebase,
 and tags. `scripts/sc` is for provider metadata and collaboration operations

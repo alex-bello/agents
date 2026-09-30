@@ -1,24 +1,25 @@
-#!/usr/bin/env node
-
-// skills/source-control/src/cli.ts
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import process from "node:process";
-var EXIT = {
+import type { CommandOptions, ExitCode, GlobalOptions, JsonRecord, NativeResult, ParsedOptions, Provider } from "./types.ts";
+
+const EXIT: { usage: 2; detection: 3; unsupported: 4; missing: 5; auth: 6; native: 7; normalize: 8 } = {
   usage: 2,
   detection: 3,
   unsupported: 4,
   missing: 5,
   auth: 6,
   native: 7,
-  normalize: 8
+  normalize: 8,
 };
-var COMMENT_PAGE_SIZE = 30;
-var MAX_COMMENT_PAGES = 100;
-var REPO_SEARCH_PAGE_SIZE = 100;
-var MAX_REPO_SEARCH_PAGES = 100;
-var VERSION = "0.14.1";
-var sensitiveValues = new Set;
+
+const COMMENT_PAGE_SIZE = 30;
+const MAX_COMMENT_PAGES = 100;
+const REPO_SEARCH_PAGE_SIZE = 100;
+const MAX_REPO_SEARCH_PAGES = 100;
+const VERSION = "0.14.1";
+const sensitiveValues = new Set<string>();
+
 function rememberSensitiveValues() {
   for (const [name, value] of Object.entries(process.env)) {
     if (typeof value === "string" && value.length > 0 && /token|secret|password|credential|auth|private.?key/i.test(name)) {
@@ -26,93 +27,101 @@ function rememberSensitiveValues() {
     }
   }
 }
+
 rememberSensitiveValues();
-function sanitizeText(value) {
+
+function sanitizeText(value: string): string {
   let result = value;
-  for (const secret of sensitiveValues)
-    result = result.split(secret).join("[redacted]");
-  return result.replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[redacted]@").replace(/([?&](?:access_token|auth|key|password|secret|token)=)[^&#\s]*/gi, "$1[redacted]").replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, "[redacted]").replace(/\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[redacted]");
+  for (const secret of sensitiveValues) result = result.split(secret).join("[redacted]");
+  return result
+    .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[redacted]@")
+    .replace(/([?&](?:access_token|auth|key|password|secret|token)=)[^&#\s]*/gi, "$1[redacted]")
+    .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, "[redacted]")
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[redacted]");
 }
-function sanitizeValue(value) {
-  if (typeof value === "string")
-    return sanitizeText(value);
-  if (Array.isArray(value))
-    return value.map(sanitizeValue);
+
+function sanitizeValue(value: any): any {
+  if (typeof value === "string") return sanitizeText(value);
+  if (Array.isArray(value)) return value.map(sanitizeValue);
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, sanitizeValue(child)]));
   }
   return value;
 }
-function fail(code, message) {
-  process.stderr.write(`sc: ${sanitizeText(message)}
-`);
+
+function fail(code: ExitCode, message: string): never {
+  process.stderr.write(`sc: ${sanitizeText(message)}\n`);
   process.exit(code);
 }
-function emit(value) {
-  process.stdout.write(`${JSON.stringify(sanitizeValue(value))}
-`);
+
+function emit(value: unknown): void {
+  process.stdout.write(`${JSON.stringify(sanitizeValue(value))}\n`);
 }
-function executableExists(name) {
+
+function executableExists(name: string): boolean {
   const result = spawnSync("command", ["-v", name], {
     encoding: "utf8",
     shell: true,
-    stdio: ["ignore", "ignore", "ignore"]
+    stdio: ["ignore", "ignore", "ignore"],
   });
   return result.status === 0;
 }
-function run(name, args, { allowFailure = false } = {}) {
-  if (!executableExists(name))
-    fail(EXIT.missing, `required executable not found: ${name}`);
+
+function run(name: string, args: string[], { allowFailure = false }: CommandOptions = {}): NativeResult {
+  if (!executableExists(name)) fail(EXIT.missing, `required executable not found: ${name}`);
   const result = spawnSync(name, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  if (result.error?.code === "ENOENT")
-    fail(EXIT.missing, `required executable not found: ${name}`);
+  if (result.error?.code === "ENOENT") fail(EXIT.missing, `required executable not found: ${name}`);
   if (result.status !== 0 && !allowFailure) {
-    if (result.stderr)
-      process.stderr.write(sanitizeText(result.stderr));
+    if (result.stderr) process.stderr.write(sanitizeText(result.stderr));
     fail(EXIT.native, `${name} command failed with exit code ${result.status ?? "unknown"}`);
   }
   return result;
 }
-function runForgejoPullList(args) {
+
+function runForgejoPullList(args: string[]): string {
   const result = run("tea", args, { allowFailure: true });
-  if (result.status === 0)
-    return result.stdout;
+  if (result.status === 0) return result.stdout;
   if (!/invalid field ['\"]draft['\"]/i.test(result.stderr)) {
-    if (result.stderr)
-      process.stderr.write(sanitizeText(result.stderr));
+    if (result.stderr) process.stderr.write(sanitizeText(result.stderr));
     fail(EXIT.native, `tea command failed with exit code ${result.status ?? "unknown"}`);
   }
+
   const fallbackArgs = [...args];
   const fieldsIndex = fallbackArgs.indexOf("--fields");
   const fields = fieldsIndex >= 0 ? fallbackArgs[fieldsIndex + 1]?.split(",") ?? [] : [];
   if (!fields.includes("draft")) {
-    if (result.stderr)
-      process.stderr.write(sanitizeText(result.stderr));
+    if (result.stderr) process.stderr.write(sanitizeText(result.stderr));
     fail(EXIT.native, `tea command failed with exit code ${result.status ?? "unknown"}`);
   }
   fallbackArgs[fieldsIndex + 1] = fields.filter((field) => field !== "draft").join(",");
   const fallback = run("tea", fallbackArgs, { allowFailure: true });
   if (fallback.status !== 0) {
-    if (fallback.stderr)
-      process.stderr.write(sanitizeText(fallback.stderr));
+    if (fallback.stderr) process.stderr.write(sanitizeText(fallback.stderr));
     fail(EXIT.native, `tea command failed with exit code ${fallback.status ?? "unknown"}`);
   }
   return fallback.stdout;
 }
-function parseJson(text, context) {
+
+function nativeCommand(name: string, args: string[]): string {
+  const safeArgs = args.filter((value) => !sensitiveValues.has(value));
+  return [name, ...safeArgs].map((value) => /\s/.test(value) ? JSON.stringify(value) : value).join(" ");
+}
+
+function parseJson(text: string, context: string): any {
   try {
     return JSON.parse(text);
   } catch {
     fail(EXIT.normalize, `could not normalize ${context} output as JSON`);
   }
 }
-function commentNormalizationFailure(context, expectedShape) {
+
+function commentNormalizationFailure(context: string, expectedShape: string): never {
   fail(EXIT.normalize, `could not normalize ${context} output: expected ${expectedShape}; safe remediation: check the provider capability and fixture against the source-control command contract`);
 }
-function parseCommentList(text, context) {
+
+function parseCommentList(text: string, context: string): JsonRecord[] {
   const trimmed = text.trim();
-  if (trimmed === "" || /^no comments(?: found| available)?[.!]?$/i.test(trimmed))
-    return [];
+  if (trimmed === "" || /^no comments(?: found| available)?[.!]?$/i.test(trimmed)) return [];
   let data;
   try {
     data = JSON.parse(trimmed);
@@ -124,117 +133,97 @@ function parseCommentList(text, context) {
   }
   return data;
 }
-function parseForgejoCommentPage(text, context) {
+
+function parseForgejoCommentPage(text: string, context: string): { comments: JsonRecord[]; nextPage: number | "implicit" | null } {
   const trimmed = text.trim();
   if (trimmed === "" || /^no comments(?: found| available)?[.!]?$/i.test(trimmed)) {
     return { comments: [], nextPage: null };
   }
+
   let data;
   try {
     data = JSON.parse(trimmed);
   } catch {
     commentNormalizationFailure(context, "a JSON array or empty output");
   }
+
   if (Array.isArray(data)) {
     return {
       comments: data,
-      nextPage: data.length === COMMENT_PAGE_SIZE ? "implicit" : null
+      nextPage: data.length === COMMENT_PAGE_SIZE ? "implicit" : null,
     };
   }
+
   if (!data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.comments)) {
     commentNormalizationFailure(context, "a JSON array or empty output");
   }
+
   if (!data.pagination || typeof data.pagination !== "object" || Array.isArray(data.pagination)) {
     commentNormalizationFailure(context, "a JSON array or an object with comments and pagination.next");
   }
+
   const nextPage = data.pagination.next;
   if (nextPage !== null && (!Number.isInteger(nextPage) || nextPage < 1)) {
     commentNormalizationFailure(context, "pagination.next to be null or a positive integer page number");
   }
+
   return { comments: data.comments, nextPage };
 }
-function parseForgejoCommentPages(number, scoped, operation) {
+
+function parseForgejoCommentPages(number: string, scoped: string[], operation: string): JsonRecord[] {
   const comments = [];
-  const seenPages = new Set;
+  const seenPages = new Set();
   let page = 1;
-  for (let count = 0;count < MAX_COMMENT_PAGES; count += 1) {
+
+  for (let count = 0; count < MAX_COMMENT_PAGES; count += 1) {
     const pageReference = page;
-    if (seenPages.has(pageReference))
-      return comments;
+    if (seenPages.has(pageReference)) return comments;
     seenPages.add(pageReference);
+
     const nativeArgs = ["comments", "list", number, "--output", "json", "--limit", String(COMMENT_PAGE_SIZE), "--page", String(page), ...scoped];
     const parsed = parseForgejoCommentPage(run("tea", nativeArgs).stdout, operation);
     comments.push(...parsed.comments);
-    if (parsed.nextPage === null)
-      return comments;
+
+    if (parsed.nextPage === null) return comments;
     if (parsed.nextPage === "implicit") {
       page += 1;
       continue;
     }
-    if (seenPages.has(parsed.nextPage))
-      return comments;
+    if (seenPages.has(parsed.nextPage)) return comments;
     page = parsed.nextPage;
   }
+
   commentNormalizationFailure(operation, `pagination traversal to remain within ${MAX_COMMENT_PAGES} pages`);
 }
-function findForgejoRepository(owner, name, isPrivate, operation) {
-  for (let page = 1;page <= MAX_REPO_SEARCH_PAGES; page += 1) {
-    const output = run("tea", [
-      "repos",
-      "search",
-      name,
-      "--owner",
-      owner,
-      "--private",
-      String(isPrivate),
-      "--fields",
-      "description,name,owner,url,permission,type",
-      "--limit",
-      String(REPO_SEARCH_PAGE_SIZE),
-      "--page",
-      String(page),
-      "--output",
-      "json"
-    ]).stdout;
+
+function findForgejoRepository(owner: string, name: string, isPrivate: boolean, operation: string): JsonRecord | null {
+  for (let page = 1; page <= MAX_REPO_SEARCH_PAGES; page += 1) {
+    const output = run("tea", ["repos", "search", name, "--owner", owner, "--private", String(isPrivate),
+      "--fields", "description,name,owner,url,permission,type", "--limit", String(REPO_SEARCH_PAGE_SIZE),
+      "--page", String(page), "--output", "json"]).stdout;
     const data = parseJson(output, operation);
-    if (!Array.isArray(data))
-      fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
+    if (!Array.isArray(data)) fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
     const item = data.find((candidate) => candidate.name === name && scalar(candidate.owner) === owner);
-    if (item)
-      return item;
-    if (data.length < REPO_SEARCH_PAGE_SIZE)
-      return null;
+    if (item) return item;
+    if (data.length < REPO_SEARCH_PAGE_SIZE) return null;
   }
   fail(EXIT.normalize, `could not normalize ${operation} output: repository search exceeded ${MAX_REPO_SEARCH_PAGES} pages`);
 }
-function listForgejoRepository(owner, name, operation) {
-  for (let page = 1;page <= MAX_REPO_SEARCH_PAGES; page += 1) {
-    const output = run("tea", [
-      "repos",
-      "list",
-      "--owner",
-      owner,
-      "--limit",
-      String(REPO_SEARCH_PAGE_SIZE),
-      "--page",
-      String(page),
-      "--fields",
-      "description,name,owner,url,permission,type",
-      "--output",
-      "json"
-    ]).stdout;
+
+function listForgejoRepository(owner: string, name: string, operation: string): JsonRecord | null {
+  for (let page = 1; page <= MAX_REPO_SEARCH_PAGES; page += 1) {
+    const output = run("tea", ["repos", "list", "--owner", owner, "--limit", String(REPO_SEARCH_PAGE_SIZE),
+      "--page", String(page), "--fields", "description,name,owner,url,permission,type", "--output", "json"]).stdout;
     const data = parseJson(output, operation);
-    if (!Array.isArray(data))
-      fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
+    if (!Array.isArray(data)) fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
     const item = data.find((candidate) => candidate.name === name && scalar(candidate.owner) === owner);
-    if (item)
-      return item;
-    if (data.length < REPO_SEARCH_PAGE_SIZE)
-      return null;
+    if (item) return item;
+    if (data.length < REPO_SEARCH_PAGE_SIZE) return null;
   }
   fail(EXIT.normalize, `could not normalize ${operation} output: repository listing exceeded ${MAX_REPO_SEARCH_PAGES} pages`);
 }
-function parseGitHubCommentList(text, context) {
+
+function parseGitHubCommentList(text: string, context: string): JsonRecord[] {
   let data;
   try {
     data = JSON.parse(text);
@@ -246,22 +235,22 @@ function parseGitHubCommentList(text, context) {
   }
   return data.comments;
 }
-function scalar(value, fallback = null) {
-  if (value === undefined || value === null)
-    return fallback;
-  if (typeof value === "object")
-    return value.login ?? value.username ?? value.name ?? fallback;
+
+function scalar(value: any, fallback: any = null): any {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === "object") return value.login ?? value.username ?? value.name ?? fallback;
   return value;
 }
-function labels(value) {
+
+function labels(value: any): any[] {
   if (!Array.isArray(value)) {
-    if (typeof value === "string")
-      return value ? value.split(",").map((item) => item.trim()) : [];
+    if (typeof value === "string") return value ? value.split(",").map((item) => item.trim()) : [];
     return [];
   }
   return value.map((item) => scalar(item)).filter(Boolean);
 }
-function normalizeItem(item) {
+
+function normalizeItem(item: JsonRecord): JsonRecord {
   return {
     number: Number(item.number ?? item.index),
     title: item.title ?? null,
@@ -271,56 +260,55 @@ function normalizeItem(item) {
     url: item.url ?? item.html_url ?? null,
     labels: labels(item.labels),
     createdAt: item.createdAt ?? item.created ?? item.created_at ?? null,
-    updatedAt: item.updatedAt ?? item.updated ?? item.updated_at ?? null
+    updatedAt: item.updatedAt ?? item.updated ?? item.updated_at ?? null,
   };
 }
-function normalizeComment(item) {
+
+function normalizeComment(item: JsonRecord): JsonRecord {
   return {
     id: item.id ?? null,
     author: scalar(item.author ?? item.user),
     body: item.body ?? item.content ?? null,
     url: item.url ?? item.html_url ?? null,
     createdAt: item.createdAt ?? item.created ?? item.created_at ?? null,
-    updatedAt: item.updatedAt ?? item.updated ?? item.updated_at ?? null
+    updatedAt: item.updatedAt ?? item.updated ?? item.updated_at ?? null,
   };
 }
-function normalizeLabel(item) {
+
+function normalizeLabel(item: JsonRecord): JsonRecord {
   return {
     id: item.id ?? item.index ?? null,
     name: item.name ?? null,
     color: item.color ?? null,
-    description: item.description ?? null
+    description: item.description ?? null,
   };
 }
-function normalizePullRequest(item) {
+
+function normalizePullRequest(item: JsonRecord): JsonRecord {
   return {
     ...normalizeItem(item),
     base: scalar(item.base ?? item.baseRefName),
     head: scalar(item.head ?? item.headRefName),
     draft: item.draft ?? item.isDraft ?? null,
-    mergeable: item.mergeable ?? null
+    mergeable: item.mergeable ?? null,
   };
 }
-function canonicalPullRequestUrl(repository, number, host) {
-  if (!repository || !host)
-    return null;
+
+function canonicalPullRequestUrl(repository: string | null, number: number, host: string): string | null {
+  if (!repository || !host) return null;
   return `https://${host}/${repository}/pulls/${number}`;
 }
-function parseGlobal(argv) {
-  const options = { provider: "auto", repo: null, remote: "origin", limit: 30 };
+
+function parseGlobal(argv: string[]): { options: GlobalOptions; rest: string[] } {
+  const options: GlobalOptions = { provider: "auto", repo: null, remote: "origin", limit: 30 };
   let index = 0;
   while (index < argv.length && argv[index].startsWith("--")) {
     const flag = argv[index++];
-    if (flag === "--provider")
-      options.provider = argv[index++];
-    else if (flag === "--repo")
-      options.repo = argv[index++];
-    else if (flag === "--remote")
-      options.remote = argv[index++];
-    else if (flag === "--limit")
-      options.limit = Number(argv[index++]);
-    else
-      fail(EXIT.usage, `unknown global option: ${flag}`);
+    if (flag === "--provider") options.provider = argv[index++];
+    else if (flag === "--repo") options.repo = argv[index++];
+    else if (flag === "--remote") options.remote = argv[index++];
+    else if (flag === "--limit") options.limit = Number(argv[index++]);
+    else fail(EXIT.usage, `unknown global option: ${flag}`);
   }
   if (!["auto", "forgejo", "github"].includes(options.provider)) {
     fail(EXIT.usage, "--provider must be auto, forgejo, or github");
@@ -330,11 +318,11 @@ function parseGlobal(argv) {
   }
   return { options, rest: argv.slice(index) };
 }
-function parseOptions(args, definitions) {
-  const values = { _: [] };
-  for (const [name, type] of Object.entries(definitions))
-    values[name] = type === "many" ? [] : false;
-  for (let index = 0;index < args.length; index += 1) {
+
+function parseOptions(args: string[], definitions: Record<string, "boolean" | "value" | "many">): ParsedOptions {
+  const values: ParsedOptions = { _: [] };
+  for (const [name, type] of Object.entries(definitions)) values[name] = type === "many" ? [] : false;
+  for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
     if (!value.startsWith("--")) {
       values._.push(value);
@@ -342,47 +330,43 @@ function parseOptions(args, definitions) {
     }
     const name = value.slice(2);
     const type = definitions[name];
-    if (!type)
-      fail(EXIT.usage, `unknown option: ${value}`);
-    if (type === "boolean")
-      values[name] = true;
+    if (!type) fail(EXIT.usage, `unknown option: ${value}`);
+    if (type === "boolean") values[name] = true;
     else {
       const next = args[++index];
-      if (next === undefined)
-        fail(EXIT.usage, `${value} requires a value`);
-      if (type === "many")
-        values[name].push(next);
-      else
-        values[name] = next;
+      if (next === undefined) fail(EXIT.usage, `${value} requires a value`);
+      if (type === "many") values[name].push(next);
+      else values[name] = next;
     }
   }
   return values;
 }
-function remoteUrl(remote) {
+
+function remoteUrl(remote: string): string {
   const result = run("git", ["remote", "get-url", remote], { allowFailure: true });
   return result.status === 0 ? result.stdout.trim() : "";
 }
-function hostFromRemote(url) {
+
+function hostFromRemote(url: string): string {
   const ssh = url.match(/^[^@]+@([^:]+):/);
-  if (ssh)
-    return ssh[1].toLowerCase();
+  if (ssh) return ssh[1].toLowerCase();
   try {
     return new URL(url).hostname.toLowerCase();
   } catch {
     return "";
   }
 }
-function repoFromRemote(url) {
+
+function repoFromRemote(url: string): string | null {
   const match = url.match(/[:/]([^/:]+\/[^/]+?)(?:\.git)?$/);
   return match?.[1] ?? null;
 }
-function detectProvider(options) {
-  if (options.provider !== "auto")
-    return options.provider;
+
+function detectProvider(options: GlobalOptions): Provider {
+  if (options.provider !== "auto") return options.provider;
   const url = remoteUrl(options.remote);
   const host = hostFromRemote(url);
-  if (host === "github.com")
-    return "github";
+  if (host === "github.com") return "github";
   if (host && executableExists("tea")) {
     const result = run("tea", ["logins", "list", "--output", "json"], { allowFailure: true });
     if (result.status === 0) {
@@ -397,43 +381,48 @@ function detectProvider(options) {
             return String(candidate).toLowerCase();
           }
         });
-        if (hosts.includes(host))
-          return "forgejo";
-      } catch {}
+        if (hosts.includes(host)) return "forgejo";
+      } catch {
+        // Detection remains ambiguous; the caller gets a deterministic error below.
+      }
     }
   }
   fail(EXIT.detection, "could not detect provider; pass --provider forgejo or --provider github");
 }
-function repository(options) {
+
+function repository(options: GlobalOptions): string | null {
   return options.repo ?? repoFromRemote(remoteUrl(options.remote));
 }
-function repoArgs(provider, options) {
-  if (!options.repo)
-    return [];
+
+function repoArgs(provider: Provider, options: GlobalOptions): string[] {
+  if (!options.repo) return [];
   return provider === "github" ? ["--repo", options.repo] : ["--repo", options.repo];
 }
-function requireFile(path, flag) {
-  if (!path)
-    fail(EXIT.usage, `${flag} is required`);
-  if (!existsSync(path))
-    fail(EXIT.missing, `file not found: ${path}`);
+
+function requireFile(path: string, flag: string): string {
+  if (!path) fail(EXIT.usage, `${flag} is required`);
+  if (!existsSync(path)) fail(EXIT.missing, `file not found: ${path}`);
   const contents = readFileSync(path, "utf8");
-  if (contents.length > 0)
-    sensitiveValues.add(contents);
+  if (contents.length > 0) sensitiveValues.add(contents);
   return contents;
 }
-function requireValue(value, description) {
-  if (!value)
-    fail(EXIT.usage, `${description} is required`);
+
+function requireValue(value: any, description: string): string {
+  if (!value) fail(EXIT.usage, `${description} is required`);
   return value;
 }
-function urlFromOutput(text) {
+
+function urlFromOutput(text: string): string | null {
   return text.match(/https?:\/\/[^\s\x00-\x1f\x7f]+/)?.[0] ?? null;
 }
-function plainTerminalText(text) {
-  return text.replace(/\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)/g, "").replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+
+function plainTerminalText(text: string): string {
+  return text
+    .replace(/\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 }
-function extractOutputUrls(text) {
+
+function extractOutputUrls(text: string): string[] {
   const urls = [];
   for (const candidateText of [text, plainTerminalText(text)]) {
     for (const match of candidateText.matchAll(/https?:\/\/[^\s\x00-\x1f\x7f]+/g)) {
@@ -442,25 +431,26 @@ function extractOutputUrls(text) {
   }
   return [...new Set(urls)];
 }
-function structuredOutputUrls(output) {
+
+function structuredOutputUrls(output: string): { foundStructuredOutput: boolean; urls: string[] } {
   const urls = [];
   let foundStructuredOutput = false;
   const structuredUrlFields = new Set(["url", "html_url", "web_url"]);
-  function collect(value, key = null) {
+
+  function collect(value: any, key: string | null = null): void {
     if (typeof value === "string" && structuredUrlFields.has(key)) {
       urls.push(value);
       return;
     }
     if (Array.isArray(value)) {
-      for (const item of value)
-        collect(item);
+      for (const item of value) collect(item);
       return;
     }
     if (value && typeof value === "object") {
-      for (const [childKey, childValue] of Object.entries(value))
-        collect(childValue, childKey);
+      for (const [childKey, childValue] of Object.entries(value)) collect(childValue, childKey);
     }
   }
+
   for (const candidate of [output.trim(), ...output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)]) {
     try {
       const parsed = JSON.parse(candidate);
@@ -468,39 +458,57 @@ function structuredOutputUrls(output) {
         collect(parsed);
         foundStructuredOutput = true;
       }
-    } catch {}
+    } catch {
+      // Native CLIs normally print a plain URL; URL filtering handles that path.
+    }
   }
   return { foundStructuredOutput, urls: [...new Set(urls)] };
 }
-function forgejoIssueIdentity(value, repository2, context) {
-  if (!repository2 || repository2.split("/").length !== 2) {
+
+function forgejoIssueIdentity(value: string, repository: string | null, context: string): { number: number; url: string } {
+  if (!repository || repository.split("/").length !== 2) {
     fail(EXIT.normalize, `could not normalize ${context}: repository is unavailable or malformed`);
   }
+
   let source;
   try {
     source = new URL(value);
   } catch {
     fail(EXIT.normalize, `could not normalize ${context}: created issue URL is malformed`);
   }
-  const repositoryParts = repository2.split("/");
+
+  const repositoryParts = repository.split("/");
   const parts = source.pathname.split("/").filter(Boolean);
   const numberText = parts[repositoryParts.length + 1];
   const number = Number(numberText);
-  const identifiesIssue = ["http:", "https:"].includes(source.protocol) && !source.username && !source.password && !source.search && !source.hash && parts.length === repositoryParts.length + 2 && parts.slice(0, repositoryParts.length).join("/") === repository2 && parts[repositoryParts.length] === "issues" && /^\d+$/.test(numberText ?? "") && Number.isSafeInteger(number) && number > 0;
+  const identifiesIssue = ["http:", "https:"].includes(source.protocol)
+    && !source.username
+    && !source.password
+    && !source.search
+    && !source.hash
+    && parts.length === repositoryParts.length + 2
+    && parts.slice(0, repositoryParts.length).join("/") === repository
+    && parts[repositoryParts.length] === "issues"
+    && /^\d+$/.test(numberText ?? "")
+    && Number.isSafeInteger(number)
+    && number > 0;
   if (!identifiesIssue) {
-    fail(EXIT.normalize, `could not normalize ${context}: URL does not identify an issue in repository ${repository2}`);
+    fail(EXIT.normalize, `could not normalize ${context}: URL does not identify an issue in repository ${repository}`);
   }
-  const url = `${source.origin}/${repository2}/issues/${number}`;
+
+  const url = `${source.origin}/${repository}/issues/${number}`;
   if (source.href !== url) {
     fail(EXIT.normalize, `could not normalize ${context}: created issue URL is not canonical`);
   }
   return { number, url };
 }
-function forgejoCreatedIssueCandidate(output, repository2) {
+
+function forgejoCreatedIssueCandidate(output: string, repository: string | null): { number: number; url: string } {
   const lines = plainTerminalText(output).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (lines.length === 0) {
     fail(EXIT.normalize, "could not normalize Forgejo issue creation output: created issue URL is missing");
   }
+
   const finalLine = lines.at(-1);
   const urls = [...finalLine.matchAll(/https?:\/\/[^\s\x00-\x1f\x7f]+/g)].map((match) => match[0]);
   if (urls.length === 0) {
@@ -512,15 +520,17 @@ function forgejoCreatedIssueCandidate(output, repository2) {
   if (finalLine !== urls[0]) {
     fail(EXIT.normalize, "could not normalize Forgejo issue creation output: final line must contain only the created issue URL");
   }
-  return forgejoIssueIdentity(urls[0], repository2, "Forgejo issue creation output");
+  return forgejoIssueIdentity(urls[0], repository, "Forgejo issue creation output");
 }
-function normalizeForgejoCreatedIssue(output, repository2, title, scoped) {
-  const candidate = forgejoCreatedIssueCandidate(output, repository2);
+
+function normalizeForgejoCreatedIssue(output: string, repository: string | null, title: string, scoped: string[]): JsonRecord {
+  const candidate = forgejoCreatedIssueCandidate(output, repository);
   const verification = parseJson(run("tea", ["issues", String(candidate.number), "--fields", "index,title,url", "--output", "json", ...scoped]).stdout, "issue.create verification");
   const items = Array.isArray(verification) ? verification : [verification];
   if (items.length !== 1) {
     fail(EXIT.normalize, `could not verify Forgejo issue creation: expected exactly one structured issue, found ${items.length}`);
   }
+
   const item = items[0];
   if (!item || typeof item !== "object") {
     fail(EXIT.normalize, "could not verify Forgejo issue creation: structured issue is malformed");
@@ -535,67 +545,87 @@ function normalizeForgejoCreatedIssue(output, repository2, title, scoped) {
   if (typeof item.url !== "string") {
     fail(EXIT.normalize, "could not verify Forgejo issue creation: structured issue URL is missing or malformed");
   }
-  const verified = forgejoIssueIdentity(item.url, repository2, "Forgejo issue creation verification");
+  const verified = forgejoIssueIdentity(item.url, repository, "Forgejo issue creation verification");
   if (verified.number !== candidate.number || verified.url !== candidate.url) {
     fail(EXIT.normalize, "could not verify Forgejo issue creation: structured issue URL does not match creation output");
   }
+
   return {
     provider: "forgejo",
     operation: "issue.create",
-    repository: repository2,
+    repository,
     number: verified.number,
     success: true,
-    url: verified.url
+    url: verified.url,
   };
 }
-function pullRequestIdentity(value, provider, repository2, expectedHost) {
+
+function pullRequestIdentity(value: string, provider: Provider, repository: string | null, expectedHost: string | null): { number: number; url: string } | null {
   let source;
   try {
     source = new URL(value);
   } catch {
     return null;
   }
+
   const parts = source.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
-  const repositoryParts = repository2.split("/");
+  const repositoryParts = repository.split("/");
   const kind = parts[repositoryParts.length];
   const numberText = parts[repositoryParts.length + 1];
   const allowedKinds = provider === "github" ? ["pull"] : ["pull", "pulls"];
-  if (!["http:", "https:"].includes(source.protocol) || expectedHost && source.hostname.toLowerCase() !== expectedHost.toLowerCase() || source.username || source.password || source.search || source.hash || parts.length !== repositoryParts.length + 2 || parts.slice(0, repositoryParts.length).join("/") !== repository2 || !allowedKinds.includes(kind) || !/^\d+$/.test(numberText ?? "")) {
+  if (!["http:", "https:"].includes(source.protocol)
+    || (expectedHost && source.hostname.toLowerCase() !== expectedHost.toLowerCase())
+    || source.username
+    || source.password
+    || source.search
+    || source.hash
+    || parts.length !== repositoryParts.length + 2
+    || parts.slice(0, repositoryParts.length).join("/") !== repository
+    || !allowedKinds.includes(kind)
+    || !/^\d+$/.test(numberText ?? "")) {
     return null;
   }
+
   const number = Number(numberText);
-  if (!Number.isSafeInteger(number) || number < 1)
-    return null;
+  if (!Number.isSafeInteger(number) || number < 1) return null;
   return {
     number,
-    url: `https://${source.host}/${repository2}/pulls/${number}`
+    url: `https://${source.host}/${repository}/pulls/${number}`,
   };
 }
-function normalizeCreatedPullRequest(output, provider, repository2, parsed, expectedHost = null) {
+
+function normalizeCreatedPullRequest(output: string, provider: Provider, repository: string | null, parsed: ParsedOptions, expectedHost: string | null = null): JsonRecord {
   const structured = structuredOutputUrls(output);
   const urls = structured.foundStructuredOutput ? structured.urls : extractOutputUrls(output);
-  const candidates = [...new Map(urls.map((url2) => pullRequestIdentity(url2, provider, repository2, expectedHost)).filter(Boolean).map((candidate) => [candidate.url, candidate])).values()];
+  const candidates = [...new Map(urls
+    .map((url) => pullRequestIdentity(url, provider, repository, expectedHost))
+    .filter(Boolean)
+    .map((candidate) => [candidate.url, candidate])).values()];
+
   if (candidates.length === 0) {
-    fail(EXIT.normalize, `could not normalize pull-request creation output: no canonical pull-request URL found for repository ${repository2}`);
+    fail(EXIT.normalize, `could not normalize pull-request creation output: no canonical pull-request URL found for repository ${repository}`);
   }
   if (candidates.length > 1) {
     fail(EXIT.normalize, `could not normalize pull-request creation output: ambiguous canonical pull-request URLs: ${candidates.map((candidate) => candidate.url).join(", ")}`);
   }
+
   const { number, url } = candidates[0];
+
   return {
     provider,
     operation: "pr.create",
-    repository: repository2,
+    repository,
     success: true,
     number,
     url,
     title: parsed.title,
     base: parsed.base,
     head: parsed.head,
-    state: "open"
+    state: "open",
   };
 }
-function github(operation, args, options) {
+
+function github(operation: string, args: string[], options: GlobalOptions): void {
   const repo = repository(options);
   const scoped = repoArgs("github", options);
   if (operation === "label.list") {
@@ -607,10 +637,8 @@ function github(operation, args, options) {
     const parsed = parseOptions(args, { name: "value", color: "value", description: "value" });
     requireValue(parsed.name, "--name");
     const native = ["label", "create", parsed.name, ...scoped];
-    if (parsed.color)
-      native.push("--color", parsed.color);
-    if (parsed.description)
-      native.push("--description", parsed.description);
+    if (parsed.color) native.push("--color", parsed.color);
+    if (parsed.description) native.push("--description", parsed.description);
     const result = run("gh", native);
     emit({ provider: "github", operation, repository: repo, name: parsed.name, success: true, output: result.stdout.trim() });
     return;
@@ -624,42 +652,30 @@ function github(operation, args, options) {
     const target = options.repo ? [options.repo] : [];
     const data = parseJson(run("gh", ["repo", "view", ...target, "--json", "nameWithOwner,description,url,visibility,isFork,defaultBranchRef"]).stdout, operation);
     emit({ provider: "github", operation, repository: data.nameWithOwner ?? repo, item: {
-      name: data.nameWithOwner ?? repo,
-      description: data.description ?? null,
-      url: data.url ?? null,
-      visibility: data.visibility?.toLowerCase() ?? null,
-      fork: Boolean(data.isFork),
-      defaultBranch: data.defaultBranchRef?.name ?? null
+      name: data.nameWithOwner ?? repo, description: data.description ?? null, url: data.url ?? null,
+      visibility: data.visibility?.toLowerCase() ?? null, fork: Boolean(data.isFork),
+      defaultBranch: data.defaultBranchRef?.name ?? null,
     } });
     return;
   }
   if (operation === "issue.list") {
     const parsed = parseOptions(args, { state: "value", label: "many" });
-    const native = [
-      "issue",
-      "list",
-      "--limit",
-      String(options.limit),
-      "--state",
-      parsed.state || "open",
-      "--json",
-      "number,title,body,state,author,url,labels,createdAt,updatedAt",
-      ...scoped
-    ];
-    for (const label of parsed.label)
-      native.push("--label", label);
+    const native = ["issue", "list", "--limit", String(options.limit), "--state", parsed.state || "open",
+      "--json", "number,title,body,state,author,url,labels,createdAt,updatedAt", ...scoped];
+    for (const label of parsed.label) native.push("--label", label);
     const data = parseJson(run("gh", native).stdout, operation);
     emit({ provider: "github", operation, repository: repo, items: data.map(normalizeItem) });
     return;
   }
   if (operation === "issue.view" || operation === "issue.comments") {
     const number = requireValue(args[0], "issue number");
-    const fields = operation.endsWith("comments") ? "number,comments" : "number,title,body,state,author,url,labels,createdAt,updatedAt";
+    const fields = operation.endsWith("comments")
+      ? "number,comments"
+      : "number,title,body,state,author,url,labels,createdAt,updatedAt";
     const data = parseJson(run("gh", ["issue", "view", number, "--json", fields, ...scoped]).stdout, operation);
     if (operation.endsWith("comments")) {
       emit({ provider: "github", operation, repository: repo, number: Number(number), items: (data.comments ?? []).map(normalizeComment) });
-    } else
-      emit({ provider: "github", operation, repository: repo, item: normalizeItem(data) });
+    } else emit({ provider: "github", operation, repository: repo, item: normalizeItem(data) });
     return;
   }
   if (operation === "issue.create") {
@@ -667,8 +683,7 @@ function github(operation, args, options) {
     requireValue(parsed.title, "--title");
     requireFile(parsed["body-file"], "--body-file");
     const native = ["issue", "create", "--title", parsed.title, "--body-file", parsed["body-file"], ...scoped];
-    for (const label of parsed.label)
-      native.push("--label", label);
+    for (const label of parsed.label) native.push("--label", label);
     const result = run("gh", native);
     emit({ provider: "github", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
     return;
@@ -681,10 +696,8 @@ function github(operation, args, options) {
       requireFile(parsed["body-file"], "--body-file");
       native.push("--body-file", parsed["body-file"]);
     }
-    for (const label of parsed["add-label"])
-      native.push("--add-label", label);
-    for (const label of parsed["remove-label"])
-      native.push("--remove-label", label);
+    for (const label of parsed["add-label"]) native.push("--add-label", label);
+    for (const label of parsed["remove-label"]) native.push("--remove-label", label);
     if (!parsed["body-file"] && !parsed["add-label"].length && !parsed["remove-label"].length) {
       fail(EXIT.usage, "issue edit requires --body-file, --add-label, or --remove-label");
     }
@@ -717,23 +730,16 @@ function github(operation, args, options) {
   }
   if (operation === "pr.list") {
     const parsed = parseOptions(args, { state: "value" });
-    const data = parseJson(run("gh", [
-      "pr",
-      "list",
-      "--limit",
-      String(options.limit),
-      "--state",
-      parsed.state || "open",
-      "--json",
-      "number,title,body,state,author,url,labels,createdAt,updatedAt,baseRefName,headRefName,isDraft,mergeable",
-      ...scoped
-    ]).stdout, operation);
+    const data = parseJson(run("gh", ["pr", "list", "--limit", String(options.limit), "--state", parsed.state || "open",
+      "--json", "number,title,body,state,author,url,labels,createdAt,updatedAt,baseRefName,headRefName,isDraft,mergeable", ...scoped]).stdout, operation);
     emit({ provider: "github", operation, repository: repo, items: data.map(normalizePullRequest) });
     return;
   }
   if (["pr.view", "pr.comments"].includes(operation)) {
     const number = requireValue(args[0], "pull request number");
-    const fields = operation.endsWith("comments") ? "number,comments" : "number,title,body,state,author,url,labels,createdAt,updatedAt,baseRefName,headRefName,isDraft,mergeable";
+    const fields = operation.endsWith("comments")
+      ? "number,comments"
+      : "number,title,body,state,author,url,labels,createdAt,updatedAt,baseRefName,headRefName,isDraft,mergeable";
     if (operation === "pr.comments") {
       const comments = parseGitHubCommentList(run("gh", ["pr", "view", number, "--json", fields, ...scoped]).stdout, operation);
       emit({ provider: "github", operation, repository: repo, number: Number(number), items: comments.map(normalizeComment) });
@@ -753,41 +759,23 @@ function github(operation, args, options) {
     const number = requireValue(args[0], "pull request number");
     const result = run("gh", ["pr", "checks", number, "--json", "name,state,bucket,link,workflow", ...scoped], { allowFailure: true });
     if (![0, 8].includes(result.status)) {
-      if (result.stderr)
-        process.stderr.write(sanitizeText(result.stderr));
+      if (result.stderr) process.stderr.write(sanitizeText(result.stderr));
       fail(EXIT.native, `gh command failed with exit code ${result.status}`);
     }
     const data = parseJson(result.stdout, operation);
     emit({ provider: "github", operation, repository: repo, number: Number(number), items: data.map((item) => ({
-      name: item.name ?? null,
-      state: item.bucket ?? item.state ?? null,
-      url: item.link ?? null,
-      workflow: item.workflow ?? null
+      name: item.name ?? null, state: item.bucket ?? item.state ?? null, url: item.link ?? null, workflow: item.workflow ?? null,
     })) });
     return;
   }
   if (operation === "pr.create") {
     const parsed = parseOptions(args, { base: "value", head: "value", title: "value", "body-file": "value", draft: "boolean", label: "many" });
-    for (const field of ["base", "head", "title"])
-      requireValue(parsed[field], `--${field}`);
+    for (const field of ["base", "head", "title"]) requireValue(parsed[field], `--${field}`);
     requireFile(parsed["body-file"], "--body-file");
-    const native = [
-      "pr",
-      "create",
-      "--base",
-      parsed.base,
-      "--head",
-      parsed.head,
-      "--title",
-      parsed.title,
-      "--body-file",
-      parsed["body-file"],
-      ...scoped
-    ];
-    if (parsed.draft)
-      native.push("--draft");
-    for (const label of parsed.label)
-      native.push("--label", label);
+    const native = ["pr", "create", "--base", parsed.base, "--head", parsed.head, "--title", parsed.title,
+      "--body-file", parsed["body-file"], ...scoped];
+    if (parsed.draft) native.push("--draft");
+    for (const label of parsed.label) native.push("--label", label);
     const result = run("gh", native);
     emit(normalizeCreatedPullRequest(result.stdout, "github", repo, parsed, hostFromRemote(remoteUrl(options.remote))));
     return;
@@ -801,7 +789,7 @@ function github(operation, args, options) {
       repository: repo,
       number: Number(number),
       success: true,
-      url: urlFromOutput(result.stdout) ?? canonicalPullRequestUrl(repo, Number(number), hostFromRemote(remoteUrl(options.remote)))
+      url: urlFromOutput(result.stdout) ?? canonicalPullRequestUrl(repo, Number(number), hostFromRemote(remoteUrl(options.remote))),
     });
     return;
   }
@@ -813,7 +801,8 @@ function github(operation, args, options) {
   }
   fail(EXIT.unsupported, `operation is unsupported for github: ${operation}`);
 }
-function forgejo(operation, args, options) {
+
+function forgejo(operation: string, args: string[], options: GlobalOptions): void {
   const repo = repository(options);
   const scoped = repoArgs("forgejo", options);
   if (operation === "label.list") {
@@ -825,10 +814,8 @@ function forgejo(operation, args, options) {
     const parsed = parseOptions(args, { name: "value", color: "value", description: "value" });
     requireValue(parsed.name, "--name");
     const native = ["labels", "create", "--name", parsed.name, ...scoped];
-    if (parsed.color)
-      native.push("--color", parsed.color);
-    if (parsed.description)
-      native.push("--description", parsed.description);
+    if (parsed.color) native.push("--color", parsed.color);
+    if (parsed.description) native.push("--description", parsed.description);
     const result = run("tea", native);
     emit({ provider: "forgejo", operation, repository: repo, name: parsed.name, success: true, output: result.stdout.trim() });
     return;
@@ -839,50 +826,34 @@ function forgejo(operation, args, options) {
     return;
   }
   if (operation === "repo.view") {
-    if (!repo)
-      fail(EXIT.detection, "repository could not be determined; pass --repo OWNER/NAME");
+    if (!repo) fail(EXIT.detection, "repository could not be determined; pass --repo OWNER/NAME");
     const [owner, name] = repo.split("/");
     const item = listForgejoRepository(owner, name, operation);
-    if (!item)
-      fail(EXIT.normalize, `repository not found in structured tea search output: ${repo}`);
+    if (!item) fail(EXIT.normalize, `repository not found in structured tea search output: ${repo}`);
     let visibility = null;
     if (typeof item.private === "boolean") {
       visibility = item.private ? "private" : "public";
     } else {
       const privateMatch = findForgejoRepository(owner, name, true, operation);
       const publicMatch = findForgejoRepository(owner, name, false, operation);
-      if (Boolean(privateMatch) !== Boolean(publicMatch))
-        visibility = privateMatch ? "private" : "public";
+      if (Boolean(privateMatch) !== Boolean(publicMatch)) visibility = privateMatch ? "private" : "public";
     }
     emit({ provider: "forgejo", operation, repository: repo, item: {
       name: `${scalar(item.owner, owner)}/${item.name ?? name}`,
-      description: item.description ?? null,
-      url: item.url ?? null,
-      visibility,
-      fork: (item.type ?? "").toLowerCase() === "fork",
-      defaultBranch: item.default_branch ?? item.defaultBranch ?? null
+      description: item.description ?? null, url: item.url ?? null, visibility,
+      fork: (item.type ?? "").toLowerCase() === "fork", defaultBranch: item.default_branch ?? item.defaultBranch ?? null,
     } });
     return;
   }
   if (operation === "issue.list" || operation === "pr.list") {
     const parsed = parseOptions(args, operation === "issue.list" ? { state: "value", label: "many" } : { state: "value" });
     const entity = operation.startsWith("issue") ? "issues" : "pulls";
-    const fields = operation.startsWith("issue") ? "index,title,body,state,author,url,labels,created,updated" : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable,draft,ci";
-    const native = [
-      entity,
-      "list",
-      "--limit",
-      String(options.limit),
-      "--state",
-      parsed.state || "open",
-      "--fields",
-      fields,
-      "--output",
-      "json",
-      ...scoped
-    ];
-    if (parsed.label?.length)
-      native.push("--labels", parsed.label.join(","));
+    const fields = operation.startsWith("issue")
+      ? "index,title,body,state,author,url,labels,created,updated"
+      : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable,draft,ci";
+    const native = [entity, "list", "--limit", String(options.limit), "--state", parsed.state || "open",
+      "--fields", fields, "--output", "json", ...scoped];
+    if (parsed.label?.length) native.push("--labels", parsed.label.join(","));
     const output = operation === "pr.list" ? runForgejoPullList(native) : run("tea", native).stdout;
     const data = parseJson(output, operation);
     emit({ provider: "forgejo", operation, repository: repo, items: data.map(normalizePullRequest) });
@@ -891,7 +862,9 @@ function forgejo(operation, args, options) {
   if (["issue.view", "pr.view"].includes(operation)) {
     const number = requireValue(args[0], `${operation.split(".")[0]} number`);
     const entity = operation.startsWith("issue") ? "issues" : "pulls";
-    const fields = entity === "issues" ? "index,title,body,state,author,url,labels,created,updated" : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable,draft";
+    const fields = entity === "issues"
+      ? "index,title,body,state,author,url,labels,created,updated"
+      : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable,draft";
     const data = parseJson(run("tea", [entity, number, "--fields", fields, "--output", "json", ...scoped]).stdout, operation);
     const item = Array.isArray(data) ? data[0] : data;
     emit({ provider: "forgejo", operation, repository: repo, item: entity === "pulls" ? normalizePullRequest(item) : normalizeItem(item) });
@@ -899,7 +872,9 @@ function forgejo(operation, args, options) {
   }
   if (operation === "issue.comments" || operation === "pr.comments") {
     const number = requireValue(args[0], `${operation.split(".")[0]} number`);
-    const data = operation === "pr.comments" ? parseForgejoCommentPages(number, scoped, operation) : parseCommentList(run("tea", ["comments", "list", number, "--output", "json", ...scoped]).stdout, operation);
+    const data = operation === "pr.comments"
+      ? parseForgejoCommentPages(number, scoped, operation)
+      : parseCommentList(run("tea", ["comments", "list", number, "--output", "json", ...scoped]).stdout, operation);
     emit({ provider: "forgejo", operation, repository: repo, number: Number(number), items: data.map(normalizeComment) });
     return;
   }
@@ -908,8 +883,7 @@ function forgejo(operation, args, options) {
     requireValue(parsed.title, "--title");
     const body = requireFile(parsed["body-file"], "--body-file");
     const native = ["issues", "create", "--title", parsed.title, "--description", body, ...scoped];
-    if (parsed.label.length)
-      native.push("--labels", parsed.label.join(","));
+    if (parsed.label.length) native.push("--labels", parsed.label.join(","));
     const result = run("tea", native);
     emit(normalizeForgejoCreatedIssue(result.stdout, repo, parsed.title, scoped));
     return;
@@ -922,10 +896,8 @@ function forgejo(operation, args, options) {
       const body = requireFile(parsed["body-file"], "--body-file");
       native.push("--description", body);
     }
-    if (parsed["add-label"].length)
-      native.push("--add-labels", parsed["add-label"].join(","));
-    if (parsed["remove-label"].length)
-      native.push("--remove-labels", parsed["remove-label"].join(","));
+    if (parsed["add-label"].length) native.push("--add-labels", parsed["add-label"].join(","));
+    if (parsed["remove-label"].length) native.push("--remove-labels", parsed["remove-label"].join(","));
     if (!parsed["body-file"] && !parsed["add-label"].length && !parsed["remove-label"].length) {
       fail(EXIT.usage, "issue edit requires --body-file, --add-label, or --remove-label");
     }
@@ -965,42 +937,27 @@ function forgejo(operation, args, options) {
     } else {
       const checks = Array.isArray(item.ci) ? item.ci : item.ci ? [item.ci] : [];
       emit({ provider: "forgejo", operation, repository: repo, number: Number(number), items: checks.map((check) => ({
-        name: check.name ?? check.context ?? null,
-        state: check.state ?? check.status ?? null,
-        url: check.url ?? check.target_url ?? null,
-        workflow: check.workflow ?? null
+        name: check.name ?? check.context ?? null, state: check.state ?? check.status ?? null,
+        url: check.url ?? check.target_url ?? null, workflow: check.workflow ?? null,
       })) });
     }
     return;
   }
   if (operation === "pr.create") {
     const parsed = parseOptions(args, { base: "value", head: "value", title: "value", "body-file": "value", draft: "boolean", label: "many" });
-    for (const field of ["base", "head", "title"])
-      requireValue(parsed[field], `--${field}`);
+    for (const field of ["base", "head", "title"]) requireValue(parsed[field], `--${field}`);
     const body = requireFile(parsed["body-file"], "--body-file");
     const owner = repo?.split("/")[0];
-    const head = owner && parsed.head.includes("/") && !parsed.head.includes(":") ? `${owner}:${parsed.head}` : parsed.head;
-    const native = [
-      "pulls",
-      "create",
-      "--base",
-      parsed.base,
-      "--head",
-      head,
-      "--title",
-      parsed.title,
-      "--description",
-      body,
-      ...scoped
-    ];
-    if (parsed.draft)
-      native.push("--draft");
-    if (parsed.label.length)
-      native.push("--labels", parsed.label.join(","));
+    const head = owner && parsed.head.includes("/") && !parsed.head.includes(":")
+      ? `${owner}:${parsed.head}`
+      : parsed.head;
+    const native = ["pulls", "create", "--base", parsed.base, "--head", head, "--title", parsed.title,
+      "--description", body, ...scoped];
+    if (parsed.draft) native.push("--draft");
+    if (parsed.label.length) native.push("--labels", parsed.label.join(","));
     const result = run("tea", native, { allowFailure: true });
     if (result.status !== 0) {
-      if (result.stderr)
-        process.stderr.write(sanitizeText(result.stderr));
+      if (result.stderr) process.stderr.write(sanitizeText(result.stderr));
       fail(EXIT.native, `tea command failed with exit code ${result.status ?? "unknown"} while creating PR from base "${parsed.base}" to head "${parsed.head}" in repository "${repo}"; native command: tea pulls create`);
     }
     emit(normalizeCreatedPullRequest(result.stdout, "forgejo", repo, parsed, hostFromRemote(remoteUrl(options.remote))));
@@ -1015,7 +972,7 @@ function forgejo(operation, args, options) {
       repository: repo,
       number: Number(number),
       success: true,
-      url: urlFromOutput(result.stdout) ?? canonicalPullRequestUrl(repo, Number(number), hostFromRemote(remoteUrl(options.remote)))
+      url: urlFromOutput(result.stdout) ?? canonicalPullRequestUrl(repo, Number(number), hostFromRemote(remoteUrl(options.remote))),
     });
     return;
   }
@@ -1027,7 +984,8 @@ function forgejo(operation, args, options) {
   }
   fail(EXIT.unsupported, `operation is unsupported for forgejo: ${operation}`);
 }
-var HELP = `Usage: sc [global options] <resource> <action> [arguments]
+
+const HELP = `Usage: sc [global options] <resource> <action> [arguments]
 
 Global options:
   --provider auto|forgejo|github  Select or detect the provider
@@ -1046,22 +1004,23 @@ Options:
 
 Successful commands write one normalized JSON object to stdout. Diagnostics go to stderr.
 `;
-var commandLine = process.argv.slice(2);
+
+const commandLine = process.argv.slice(2);
 if (commandLine.some((value) => value === "--help" || value === "-h")) {
   process.stdout.write(HELP);
   process.exit(0);
 }
 if (commandLine.some((value) => value === "--version" || value === "-v")) {
-  process.stdout.write(`sc ${VERSION}
-`);
+  process.stdout.write(`sc ${VERSION}\n`);
   process.exit(0);
 }
-var { options, rest } = parseGlobal(commandLine);
-var resource = rest[0];
-if (!resource)
-  fail(EXIT.usage, "a command is required");
-var provider = detectProvider(options);
-var repo = repository(options);
+
+const { options, rest } = parseGlobal(commandLine);
+const resource = rest[0];
+if (!resource) fail(EXIT.usage, "a command is required");
+const provider = detectProvider(options);
+const repo = repository(options);
+
 if (resource === "provider") {
   emit({ provider, operation: "provider", repository: repo });
   process.exit(0);
@@ -1094,20 +1053,18 @@ if (resource === "capabilities") {
       "pr.checkout": true,
       "pr.merge": false,
       "review.resolve": false,
-      "release.create": false
-    }
+      "release.create": false,
+    },
   });
   process.exit(0);
 }
-var action = rest[1];
-if (!action)
-  fail(EXIT.usage, `an action is required for ${resource}`);
+
+const action = rest[1];
+if (!action) fail(EXIT.usage, `an action is required for ${resource}`);
 if (!["auth", "repo", "label", "issue", "pr"].includes(resource)) {
   fail(EXIT.unsupported, `unsupported resource: ${resource}`);
 }
-var operation = `${resource}.${action}`;
-var operationArgs = rest.slice(2);
-if (provider === "github")
-  github(operation, operationArgs, options);
-else
-  forgejo(operation, operationArgs, options);
+const operation = `${resource}.${action}`;
+const operationArgs = rest.slice(2);
+if (provider === "github") github(operation, operationArgs, options);
+else forgejo(operation, operationArgs, options);
