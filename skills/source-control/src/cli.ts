@@ -17,6 +17,8 @@ const COMMENT_PAGE_SIZE = 30;
 const MAX_COMMENT_PAGES = 100;
 const REPO_SEARCH_PAGE_SIZE = 100;
 const MAX_REPO_SEARCH_PAGES = 100;
+const LABEL_PAGE_SIZE = 100;
+const MAX_LABEL_PAGES = 100;
 const VERSION = "0.14.1";
 const sensitiveValues = new Set<string>();
 
@@ -397,6 +399,17 @@ function repository(options: GlobalOptions): string | null {
 function repoArgs(provider: Provider, options: GlobalOptions): string[] {
   if (!options.repo) return [];
   return provider === "github" ? ["--repo", options.repo] : ["--repo", options.repo];
+}
+
+function forgejoLabelRepoArgs(options: GlobalOptions): string[] {
+  const target = repository(options);
+  return target ? ["--repo", target] : [];
+}
+
+function listForgejoLabels(scoped: string[], limit: number, page = 1, operation = "label.list"): JsonRecord[] {
+  const data = parseJson(run("tea", ["labels", "list", "--limit", String(limit), "--page", String(page), "--output", "json", ...scoped]).stdout, operation);
+  if (!Array.isArray(data)) fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
+  return data;
 }
 
 function requireFile(path: string, flag: string): string {
@@ -805,18 +818,35 @@ function github(operation: string, args: string[], options: GlobalOptions): void
 function forgejo(operation: string, args: string[], options: GlobalOptions): void {
   const repo = repository(options);
   const scoped = repoArgs("forgejo", options);
+  const labelScoped = forgejoLabelRepoArgs(options);
   if (operation === "label.list") {
-    const data = parseJson(run("tea", ["labels", "list", "--limit", String(options.limit), "--output", "json", ...scoped]).stdout, operation);
+    const data = listForgejoLabels(labelScoped, options.limit, 1, operation);
     emit({ provider: "forgejo", operation, repository: repo, items: data.map(normalizeLabel) });
     return;
   }
   if (operation === "label.create") {
     const parsed = parseOptions(args, { name: "value", color: "value", description: "value" });
     requireValue(parsed.name, "--name");
-    const native = ["labels", "create", "--name", parsed.name, ...scoped];
-    if (parsed.color) native.push("--color", parsed.color);
+    const color = String(parsed.color === false || parsed.color == null ? "808080" : parsed.color).replace(/^#/, "");
+    if (!/^[0-9a-fA-F]{6}$/.test(color)) {
+      fail(EXIT.usage, `--color must be a six-digit hexadecimal RGB value (for example 808080 or #808080); received "${parsed.color}"`);
+    }
+    const native = ["labels", "create", "--name", parsed.name, ...labelScoped];
+    native.push("--color", color.toUpperCase());
     if (parsed.description) native.push("--description", parsed.description);
     const result = run("tea", native);
+    let visible = false;
+    for (let page = 1; page <= MAX_LABEL_PAGES; page += 1) {
+      const items = listForgejoLabels(labelScoped, LABEL_PAGE_SIZE, page, "label.create verification");
+      if (items.some((item) => item.name === parsed.name)) {
+        visible = true;
+        break;
+      }
+      if (items.length < LABEL_PAGE_SIZE) break;
+    }
+    if (!visible) {
+      fail(EXIT.normalize, `tea reported success, but label "${parsed.name}" was not visible in repository "${repo ?? "the detected repository"}" after creation; run sc label list to inspect the target repository and retry only if the label is absent`);
+    }
     emit({ provider: "forgejo", operation, repository: repo, name: parsed.name, success: true, output: result.stdout.trim() });
     return;
   }

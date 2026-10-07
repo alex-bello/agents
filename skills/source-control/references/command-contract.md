@@ -52,6 +52,14 @@ Global options must precede the resource:
 | `pr ready` | `NUMBER` | none |
 | `pr checkout` | `NUMBER` | none |
 
+Forgejo `label create` defaults an omitted color to `808080`. A supplied color
+must be a six-digit hexadecimal RGB value; an optional leading `#` is accepted
+and removed before calling `tea`. After `tea` reports creation success, `sc`
+checks the repository's paginated label list and only reports success when the
+new label is visible. Forgejo label list and create commands use the same
+repository target, including the repository detected from the current Git
+remote.
+
 Create, edit, close, comment, and draft-promotion commands are externally visible writes. Checkout
 changes the local worktree. Use them only when the user's request authorizes the
 effect.

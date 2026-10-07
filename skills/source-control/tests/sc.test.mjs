@@ -242,21 +242,80 @@ fi`,
   }
 });
 
-test("lists and creates Forgejo labels", async (t) => {
+test("creates and lists Forgejo labels in inferred and explicit repository scope", async (t) => {
+  for (const target of [
+    { name: "inferred", args: [], repo: "owner/project", colorArgs: [] },
+    { name: "explicit", args: ["--repo", "other/target"], repo: "other/target", colorArgs: ["--color", "#7c3aed"] },
+  ]) {
+    const callsFile = path.join(tmpdir(), `source-control-label-calls-${process.pid}-${target.name}`);
+    t.after(() => rm(callsFile, { force: true }));
+    const directory = await fixture(t, {
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "labels create" ]; then
+  printf '%s\\n' "$*" >> "${callsFile}"
+  touch "${callsFile}.created"
+  printf '%s\\n' 'created'
+elif [ "$1 $2" = "labels list" ]; then
+  printf '%s\\n' "$*" >> "${callsFile}"
+  case "$*" in
+  *"--repo ${target.repo}"*)
+    if [ -f "${callsFile}.created" ]; then
+    printf '%s\\n' '[{"id":17,"name":"wayfinder","color":"7C3AED","description":"Lifecycle work"}]'
+    else printf '%s\\n' '[]'; fi
+    ;;
+  *)
+    printf '%s\\n' '[]'
+    ;;
+  esac
+else exit 99; fi`,
+    });
+    t.after(() => rm(`${callsFile}.created`, { force: true }));
+
+    const created = invoke(directory, ["--provider", "forgejo", ...target.args, "label", "create", "--name", "wayfinder", ...target.colorArgs, "--description", "Lifecycle work"]);
+    assert.equal(created.status, 0, `${target.name}: ${created.stderr}`);
+    assert.deepEqual(JSON.parse(created.stdout), {
+      provider: "forgejo", operation: "label.create", repository: target.repo,
+      name: "wayfinder", success: true, output: "created",
+    });
+
+    const listed = invoke(directory, ["--provider", "forgejo", ...target.args, "label", "list"]);
+    assert.equal(listed.status, 0, `${target.name}: ${listed.stderr}`);
+    assert.deepEqual(JSON.parse(listed.stdout).items, [{
+      id: 17, name: "wayfinder", color: "7C3AED", description: "Lifecycle work",
+    }]);
+    const nativeCalls = await readFile(callsFile, "utf8");
+    assert.match(nativeCalls, new RegExp(`labels create .*--repo ${target.repo}`));
+    assert.match(nativeCalls, new RegExp(`labels list .*--repo ${target.repo}`));
+    if (target.colorArgs.length) assert.match(nativeCalls, /--color 7C3AED/);
+    else assert.match(nativeCalls, /--color 808080/);
+  }
+});
+
+test("fails when Forgejo reports label creation but the label is not visible", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
     tea: `
 if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
-elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' '[{"id":17,"name":"thin-slice","color":"2563EB","description":"Lifecycle work"}]';
 elif [ "$1 $2" = "labels create" ]; then printf '%s\\n' 'created';
+elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' '[]';
 else exit 99; fi`,
   });
-  const listed = invoke(directory, ["label", "list"]);
-  assert.equal(listed.status, 0, listed.stderr);
-  assert.deepEqual(JSON.parse(listed.stdout).items, [{ id: 17, name: "thin-slice", color: "2563EB", description: "Lifecycle work" }]);
-  const created = invoke(directory, ["label", "create", "--name", "wayfinder", "--color", "7C3AED"]);
-  assert.equal(created.status, 0, created.stderr);
-  assert.deepEqual(JSON.parse(created.stdout), { provider: "forgejo", operation: "label.create", repository: "owner/project", name: "wayfinder", success: true, output: "created" });
+  const result = invoke(directory, ["--provider", "forgejo", "label", "create", "--name", "missing"]);
+  assert.equal(result.status, 8);
+  assert.match(result.stderr, /reported success.*label.*missing.*not visible/i);
+  assert.equal(result.stdout, "");
+});
+
+test("rejects malformed Forgejo label colors with an actionable format", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: 'exit 99',
+  });
+  const result = invoke(directory, ["--provider", "forgejo", "label", "create", "--name", "bad-color", "--color", "blue"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /six-digit hexadecimal RGB.*808080 or #808080/i);
 });
 
 test("normalizes GitHub label identifiers", async (t) => {
