@@ -912,10 +912,14 @@ test("edits a GitHub issue body from a file", async (t) => {
 });
 
 test("edits GitHub labels singly and repeatedly", async (t) => {
+  const callsFile = path.join(tmpdir(), `source-control-gh-edit-labels-${process.pid}`);
+  t.after(() => rm(callsFile, { force: true }));
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "git@github.com:owner/project.git"',
     gh: `
-if [ "$*" = "issue edit 7 --add-label ready --add-label in-progress --remove-label blocked" ]; then
+if [ "$1 $2" = "label list" ]; then printf '%s\\n' '[{"id":"LA_ready","name":"ready"},{"id":"LA_progress","name":"in-progress"},{"id":"LA_blocked","name":"blocked"}]';
+elif [ "$*" = "issue edit 7 --add-label ready --add-label in-progress --remove-label blocked --repo owner/project" ]; then
+  touch "${callsFile}"
   printf '%s\\n' 'https://github.com/owner/project/issues/7'
 else exit 99; fi`,
   });
@@ -950,7 +954,8 @@ test("edits Forgejo labels singly and repeatedly", async (t) => {
     git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
     tea: `
 if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
-elif [ "$1 $2 $3 $4 $5 $6 $7" = "issues edit 9 --add-labels ready,in-progress --remove-labels blocked" ]; then
+elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' '[{"id":17,"name":"ready"},{"id":18,"name":"in-progress"},{"id":19,"name":"blocked"}]';
+elif [ "$*" = "issues edit 9 --add-labels ready,in-progress --remove-labels blocked --repo owner/project" ]; then
   printf '%s\\n' 'https://forge.example/owner/project/issues/9'
 else exit 99; fi`,
   });
@@ -960,6 +965,302 @@ else exit 99; fi`,
     provider: "forgejo", operation: "issue.edit", repository: "owner/project", number: 9,
     success: true, url: "https://forge.example/owner/project/issues/9",
   });
+});
+
+test("deletes a GitHub label by exact ID and verifies it in the same repository", async (t) => {
+  const calls = path.join(tmpdir(), `source-control-gh-label-delete-${process.pid}`);
+  t.after(() => rm(calls, { force: true }));
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: `
+if [ "$1 $2" = "label list" ]; then
+  printf '%s\\n' "$*" >> "${calls}"
+  if [ -f "${calls}.deleted" ]; then printf '%s\\n' '[{"id":"LA_other","name":"same"}]';
+  else printf '%s\\n' '[{"id":"LA_target","name":"target"},{"id":"LA_other","name":"same"}]'; fi
+elif [ "$1 $2" = "label delete" ]; then
+  printf '%s\\n' "$*" >> "${calls}"
+  test "$3" = "target" && test "$4" = "--yes" && test "$5 $6" = "--repo owner/project" || exit 90
+  touch "${calls}.deleted"
+else exit 99; fi`,
+  });
+  t.after(() => rm(`${calls}.deleted`, { force: true }));
+  const result = invoke(directory, ["label", "delete", "--id", "LA_target"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "github", repository: "owner/project", operation: "label.delete", label_id: "LA_target", success: true,
+  });
+  const native = await readFile(calls, "utf8");
+  assert.equal((native.match(/label list/g) ?? []).length, 3);
+  assert.match(native, /label delete target --yes --repo owner\/project/);
+});
+
+test("removes one attached GitHub label ID and verifies unrelated labels remain", async (t) => {
+  const calls = path.join(tmpdir(), `source-control-gh-issue-remove-${process.pid}`);
+  t.after(() => rm(calls, { force: true }));
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: `
+if [ "$1 $2" = "label list" ]; then printf '%s\\n' '[{"id":"LA_target","name":"target"},{"id":"LA_keep","name":"keep"}]';
+elif [ "$1 $2" = "issue view" ]; then
+  printf '%s\\n' "$*" >> "${calls}"
+  if [ -f "${calls}.removed" ]; then printf '%s\\n' '{"number":7,"labels":[{"id":"LA_keep","name":"keep"}]}';
+  else printf '%s\\n' '{"number":7,"labels":[{"id":"LA_target","name":"target"},{"id":"LA_keep","name":"keep"}]}'; fi
+elif [ "$1 $2" = "issue edit" ]; then
+  printf '%s\\n' "$*" >> "${calls}"
+  test "$*" = "issue edit 7 --remove-label target --repo owner/project" || exit 90
+  touch "${calls}.removed"
+else exit 99; fi`,
+  });
+  t.after(() => rm(`${calls}.removed`, { force: true }));
+  const result = invoke(directory, ["issue", "remove-label", "7", "--id", "LA_target"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "github", repository: "owner/project", operation: "issue.remove-label", issue_number: 7, label_id: "LA_target", success: true,
+  });
+  const native = await readFile(calls, "utf8");
+  assert.match(native, /issue view 7 --json number,labels --repo owner\/project/);
+  assert.match(native, /issue edit 7 --remove-label target --repo owner\/project/);
+});
+
+test("deletes a Forgejo label by ID using the repository-scoped native capability", async (t) => {
+  const calls = path.join(tmpdir(), `source-control-tea-label-delete-${process.pid}`);
+  t.after(() => rm(calls, { force: true }));
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "labels list" ]; then
+  printf '%s\\n' "$*" >> "${calls}"
+  if [ -f "${calls}.deleted" ]; then printf '%s\\n' '[]'; else printf '%s\\n' '[{"id":17,"name":"target"}]'; fi
+elif [ "$1 $2" = "labels delete" ]; then
+  printf '%s\\n' "$*" >> "${calls}"
+  test "$*" = "labels delete --id 17 --repo owner/project" || exit 90
+  touch "${calls}.deleted"
+else exit 99; fi`,
+  });
+  t.after(() => rm(`${calls}.deleted`, { force: true }));
+  const result = invoke(directory, ["--provider", "forgejo", "label", "delete", "--id", "17"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "forgejo", repository: "owner/project", operation: "label.delete", label_id: "17", success: true,
+  });
+  assert.match(await readFile(calls, "utf8"), /labels delete --id 17 --repo owner\/project/);
+});
+
+test("removes one attached Forgejo label ID and preserves other label IDs", async (t) => {
+  const calls = path.join(tmpdir(), `source-control-tea-issue-remove-${process.pid}`);
+  t.after(() => rm(calls, { force: true }));
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "labels list" ]; then
+  printf '%s\\n' "$*" >> "${calls}"
+  printf '%s\\n' '[{"id":17,"name":"target"},{"id":18,"name":"keep"}]'
+elif [ "$1 $2" = "issues 9" ]; then
+  printf '%s\\n' "$*" >> "${calls}"
+  if [ -f "${calls}.removed" ]; then printf '%s\\n' '{"index":9,"labels":[{"id":18,"name":"keep"}]}';
+  else printf '%s\\n' '{"index":9,"labels":[{"id":17,"name":"target"},{"id":18,"name":"keep"}]}'; fi
+elif [ "$1 $2" = "issues edit" ]; then
+  printf '%s\\n' "$*" >> "${calls}"
+  test "$*" = "issues edit 9 --remove-labels target --repo owner/project" || exit 90
+  touch "${calls}.removed"
+else exit 99; fi`,
+  });
+  t.after(() => rm(`${calls}.removed`, { force: true }));
+  const result = invoke(directory, ["--provider", "forgejo", "issue", "remove-label", "9", "--id", "17"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "forgejo", repository: "owner/project", operation: "issue.remove-label", issue_number: 9, label_id: "17", success: true,
+  });
+  const native = await readFile(calls, "utf8");
+  assert.match(native, /issues 9 --fields index,labels --output json --repo owner\/project/);
+  assert.match(native, /issues edit 9 --remove-labels target --repo owner\/project/);
+});
+
+test("rejects ambiguous label names before any issue-label write for both providers", async (t) => {
+  for (const [provider, args, scripts] of [
+    ["github", ["--provider", "github"], {
+      git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+      gh: `if [ "$1 $2" = "label list" ]; then printf '%s\\n' '[{"id":"LA_one","name":"duplicate"},{"id":"LA_two","name":"duplicate"}]'; elif [ "$1 $2" = "issue edit" ]; then exit 90; else exit 99; fi`,
+    }],
+    ["forgejo", ["--provider", "forgejo"], {
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: `if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]'; elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' '[{"id":17,"name":"duplicate"},{"id":18,"name":"duplicate"}]'; elif [ "$1 $2" = "issues edit" ]; then exit 90; else exit 99; fi`,
+    }],
+  ]) {
+    const directory = await fixture(t, scripts);
+    const result = invoke(directory, [...args, "issue", "edit", provider === "github" ? "7" : "9", "--remove-label", "duplicate"]);
+    assert.equal(result.status, 2, `${provider}: ${result.stderr}`);
+    assert.match(result.stderr, /ambiguous/);
+    assert.equal(result.stdout, "");
+  }
+});
+
+test("rejects issue-label removal when the selected ID is not attached", async (t) => {
+  const calls = path.join(tmpdir(), `source-control-gh-issue-not-attached-${process.pid}`);
+  t.after(() => rm(calls, { force: true }));
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: `
+if [ "$1 $2" = "label list" ]; then printf '%s\\n' '[{"id":"LA_target","name":"target"}]';
+elif [ "$1 $2" = "issue view" ]; then printf '%s\\n' '{"number":7,"labels":[]}';
+elif [ "$1 $2" = "issue edit" ]; then touch "${calls}"; exit 90; else exit 99; fi`,
+  });
+  const result = invoke(directory, ["issue", "remove-label", "7", "--id", "LA_target"]);
+  assert.equal(result.status, 5);
+  assert.match(result.stderr, /not attached/);
+  await assert.rejects(readFile(calls));
+});
+
+test("rejects absent, malformed, and non-singleton issue reads before mutation for both providers", async (t) => {
+  const cases = [
+    ["github", ["--provider", "github"], "7", ["[]", "{}", '{"number":7}', '{"number":7,"labels":{}}', '{"number":7,"labels":[{}]}']],
+    ["forgejo", ["--provider", "forgejo"], "9", ["[]", '[{},{}]', '{"index":9}', '{"index":9,"labels":null}', '{"index":9,"labels":[{"id":17}]}']],
+  ];
+  for (const [provider, globalArgs, number, invalidRecords] of cases) {
+    for (const issueRecord of invalidRecords) {
+      const calls = path.join(tmpdir(), `source-control-${provider}-strict-read-${process.pid}-${Math.random()}`);
+      t.after(() => rm(calls, { force: true }));
+      const scripts = provider === "github" ? {
+        git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+        gh: `
+if [ "$1 $2" = "label list" ]; then printf '%s\\n' '[{"id":"LA_target","name":"target"}]';
+elif [ "$1 $2" = "issue view" ]; then printf '%s\\n' "$SC_TEST_ISSUE";
+elif [ "$1 $2" = "issue edit" ]; then touch "${calls}"; exit 90; else exit 99; fi`,
+      } : {
+        git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+        tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' '[{"id":17,"name":"target"}]';
+elif [ "$1 $2" = "issues 9" ]; then printf '%s\\n' "$SC_TEST_ISSUE";
+elif [ "$1 $2" = "issues edit" ]; then touch "${calls}"; exit 90; else exit 99; fi`,
+      };
+      const directory = await fixture(t, scripts);
+      const result = invoke(directory, [...globalArgs, "issue", "remove-label", number, "--id", provider === "github" ? "LA_target" : "17"], {
+        SC_TEST_ISSUE: issueRecord,
+      });
+      assert.equal(result.status, 8, `${provider} record ${issueRecord}: ${result.stderr}`);
+      assert.equal(result.stdout, "");
+      await assert.rejects(readFile(calls));
+    }
+  }
+});
+
+test("does not claim issue-label removal when post-mutation issue reads are missing or malformed", async (t) => {
+  for (const [provider, globalArgs, number, id, validRecord, invalidRecord, scripts] of [
+    ["github", ["--provider", "github"], "7", "LA_target", '{"number":7,"labels":[{"id":"LA_target","name":"target"}]}', '{"number":7,"labels":{}}', (calls, state, validRecord, invalidRecord) => ({
+      git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+      gh: `
+if [ "$1 $2" = "label list" ]; then printf '%s\\n' '[{"id":"LA_target","name":"target"}]';
+elif [ "$1 $2" = "issue view" ]; then if [ -f "${state}" ]; then printf '%s\\n' '${invalidRecord}'; else printf '%s\\n' '${validRecord}'; fi
+elif [ "$1 $2" = "issue edit" ]; then touch "${state}"; printf '%s\\n' "$*" >> "${calls}";
+else exit 99; fi`,
+    })],
+    ["forgejo", ["--provider", "forgejo"], "9", "17", '{"index":9,"labels":[{"id":17,"name":"target"}]}', '[{}]', (calls, state, validRecord, invalidRecord) => ({
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' '[{"id":17,"name":"target"}]';
+elif [ "$1 $2" = "issues 9" ]; then if [ -f "${state}" ]; then printf '%s\\n' '${invalidRecord}'; else printf '%s\\n' '${validRecord}'; fi
+elif [ "$1 $2" = "issues edit" ]; then touch "${state}"; printf '%s\\n' "$*" >> "${calls}";
+else exit 99; fi`,
+    })],
+  ]) {
+    const calls = path.join(tmpdir(), `source-control-${provider}-invalid-readback-${process.pid}`);
+    const state = `${calls}.mutated`;
+    t.after(() => rm(calls, { force: true }));
+    t.after(() => rm(state, { force: true }));
+    const directory = await fixture(t, scripts(calls, state, validRecord, invalidRecord));
+    const result = invoke(directory, [...globalArgs, "issue", "remove-label", number, "--id", id]);
+    assert.equal(result.status, 8, `${provider}: ${result.stderr}`);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /could not verify issue/);
+  }
+});
+
+test("rejects label-ID replacement races after issue removal for both providers", async (t) => {
+  for (const [provider, globalArgs, number, id, repoTarget, replacement, scripts] of [
+    ["github", ["--provider", "github"], "7", "LA_target", '{"number":7,"labels":[{"id":"LA_target","name":"target"}]}', '[{"id":"LA_replacement","name":"target"}]', (calls, state, validRecord, replacement) => ({
+      git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+      gh: `
+if [ "$1 $2" = "label list" ]; then if [ -f "${state}" ]; then printf '%s\\n' '${replacement}'; else printf '%s\\n' '[{"id":"LA_target","name":"target"}]'; fi
+elif [ "$1 $2" = "issue view" ]; then if [ -f "${state}.removed" ]; then printf '%s\\n' '{"number":7,"labels":[]}'; else printf '%s\\n' '${validRecord}'; fi
+elif [ "$1 $2" = "issue edit" ]; then touch "${state}.removed"; touch "${state}"; printf '%s\\n' "$*" >> "${calls}";
+else exit 99; fi`,
+    })],
+    ["forgejo", ["--provider", "forgejo"], "9", "17", '{"index":9,"labels":[{"id":17,"name":"target"}]}', '[{"id":18,"name":"target"}]', (calls, state, validRecord, replacement) => ({
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "labels list" ]; then if [ -f "${state}" ]; then printf '%s\\n' '${replacement}'; else printf '%s\\n' '[{"id":17,"name":"target"}]'; fi
+elif [ "$1 $2" = "issues 9" ]; then if [ -f "${state}.removed" ]; then printf '%s\\n' '{"index":9,"labels":[]}'; else printf '%s\\n' '${validRecord}'; fi
+elif [ "$1 $2" = "issues edit" ]; then touch "${state}.removed"; touch "${state}"; printf '%s\\n' "$*" >> "${calls}";
+else exit 99; fi`,
+    })],
+  ]) {
+    const calls = path.join(tmpdir(), `source-control-${provider}-identity-race-${process.pid}`);
+    const state = `${calls}.replacement`;
+    t.after(() => rm(calls, { force: true }));
+    t.after(() => rm(`${state}.removed`, { force: true }));
+    t.after(() => rm(state, { force: true }));
+    const directory = await fixture(t, scripts(calls, state, repoTarget, replacement));
+    const result = invoke(directory, [...globalArgs, "issue", "remove-label", number, "--id", id]);
+    assert.equal(result.status, 5, `${provider}: ${result.stderr}`);
+    assert.match(result.stderr, /label ID.*not found/);
+    assert.equal(result.stdout, "");
+    assert.match(await readFile(calls, "utf8"), /issue|issues edit/);
+  }
+});
+
+test("rejects malformed provider label IDs before reading or writing", async (t) => {
+  for (const [provider, args, scripts] of [
+    ["github", ["--provider", "github", "label", "delete", "--id", "17"], {
+      git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+      gh: 'exit 90',
+    }],
+    ["forgejo", ["--provider", "forgejo", "issue", "remove-label", "9", "--id", "LA_target"], {
+      git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+      tea: 'if [ "$1" = "logins" ]; then printf "[ {\\"url\\":\\"https://forge.example\\"} ]\\n"; else exit 90; fi',
+    }],
+  ]) {
+    const directory = await fixture(t, scripts);
+    const result = invoke(directory, args);
+    assert.equal(result.status, 2, `${provider}: ${result.stderr}`);
+    assert.match(result.stderr, /malformed/);
+    assert.equal(result.stdout, "");
+  }
+});
+
+test("does not report success when a GitHub label remains after deletion", async (t) => {
+  const calls = path.join(tmpdir(), `source-control-gh-label-delete-unverified-${process.pid}`);
+  t.after(() => rm(calls, { force: true }));
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: `
+if [ "$1 $2" = "label list" ]; then printf '%s\\n' '[{"id":"LA_target","name":"target"}]';
+elif [ "$1 $2" = "label delete" ]; then touch "${calls}"; printf '%s\\n' 'reported deleted';
+else exit 99; fi`,
+  });
+  const result = invoke(directory, ["label", "delete", "--id", "LA_target"]);
+  assert.equal(result.status, 8);
+  assert.match(result.stderr, /could not verify.*label ID/);
+  assert.equal(result.stdout, "");
+});
+
+test("propagates native Forgejo label-deletion failures without success output", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' '[{"id":17,"name":"target"}]';
+elif [ "$1 $2" = "labels delete" ]; then printf '%s\\n' 'provider rejected deletion' >&2; exit 1;
+else exit 99; fi`,
+  });
+  const result = invoke(directory, ["--provider", "forgejo", "label", "delete", "--id", "17"]);
+  assert.equal(result.status, 7);
+  assert.match(result.stderr, /provider rejected deletion/);
+  assert.equal(result.stdout, "");
 });
 
 test("permits body-only edits without label arguments for both providers", async (t) => {

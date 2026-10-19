@@ -294,6 +294,107 @@ function normalizeLabel(item) {
     description: item.description ?? null
   };
 }
+function normalizeIssueLabelRefs(value, provider, number, repo) {
+  if (!Array.isArray(value)) {
+    fail(EXIT.normalize, `could not verify issue ${number} labels in repository "${repo}": expected a labels array`);
+  }
+  return value.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      fail(EXIT.normalize, `could not verify issue ${number} labels in repository "${repo}": label ${index + 1} was not an object`);
+    }
+    const rawId = item.id ?? item.index;
+    const id = rawId === undefined || rawId === null ? "" : String(rawId);
+    const name = item.name;
+    if (!id || typeof name !== "string" || !name) {
+      fail(EXIT.normalize, `could not verify issue ${number} labels in repository "${repo}": label ${index + 1} lacked an ID or name`);
+    }
+    validateLabelId(provider, id);
+    return { id, name };
+  });
+}
+function requireRepository(repo) {
+  if (!repo || !/^[^/]+\/[^/]+$/.test(repo))
+    fail(EXIT.detection, "repository could not be determined; pass --repo OWNER/NAME");
+  return repo;
+}
+function mutationRepoArgs(repo) {
+  return ["--repo", repo];
+}
+function listAllLabels(provider, repo) {
+  const scoped = mutationRepoArgs(repo);
+  if (provider === "github") {
+    const data = parseJson(run("gh", ["label", "list", "--limit", "1000", "--json", "id,name,color,description", ...scoped]).stdout, "label resolution");
+    if (!Array.isArray(data))
+      fail(EXIT.normalize, "could not normalize label resolution output: expected a JSON array");
+    if (data.length >= 1000)
+      fail(EXIT.normalize, `could not verify complete label set for repository ${repo}; GitHub label listing reached its 1000-item limit`);
+    return data;
+  }
+  const labels2 = [];
+  for (let page = 1;page <= MAX_LABEL_PAGES; page += 1) {
+    const items = listForgejoLabels(scoped, LABEL_PAGE_SIZE, page, "label resolution");
+    labels2.push(...items);
+    if (items.length < LABEL_PAGE_SIZE)
+      return labels2;
+  }
+  fail(EXIT.normalize, `could not verify complete label set for repository ${repo}; Forgejo label listing exceeded ${MAX_LABEL_PAGES} pages`);
+}
+function findLabelById(items, id, repo) {
+  const matches = items.filter((item) => String(item.id ?? item.index ?? "") === id);
+  if (matches.length === 0)
+    fail(EXIT.missing, `label ID "${id}" was not found in repository "${repo}"`);
+  if (matches.length !== 1)
+    fail(EXIT.normalize, `label ID "${id}" is ambiguous in repository "${repo}"`);
+  return matches[0];
+}
+function labelIds(items, context) {
+  const ids = items.map((item) => String(item.id ?? item.index ?? ""));
+  if (ids.some((id) => !id) || new Set(ids).size !== ids.length) {
+    fail(EXIT.normalize, `could not verify ${context}: repository label IDs were missing or duplicated`);
+  }
+  return ids;
+}
+function requireUniqueLabelName(items, label, repo) {
+  const name = String(label.name ?? "");
+  if (!name)
+    fail(EXIT.normalize, `label ID "${label.id}" has no name in repository "${repo}"`);
+  const matches = items.filter((item) => item.name === name);
+  if (matches.length !== 1 || String(matches[0]?.id ?? matches[0]?.index ?? "") !== String(label.id ?? label.index ?? "")) {
+    fail(EXIT.usage, `label name "${name}" is ambiguous in repository "${repo}"; select a unique label name before mutating`);
+  }
+  return name;
+}
+function resolveUniqueNames(items, names, repo) {
+  for (const name of names) {
+    const matches = items.filter((item) => item.name === name);
+    if (matches.length > 1)
+      fail(EXIT.usage, `label name "${name}" is ambiguous in repository "${repo}"; use a unique label name`);
+  }
+}
+function validateLabelId(provider, id) {
+  const valid = provider === "forgejo" ? /^[1-9]\d*$/.test(id) : /^LA_[A-Za-z0-9_-]+$/.test(id);
+  if (!valid)
+    fail(EXIT.usage, `malformed ${provider} label ID "${id}"`);
+}
+function readIssue(provider, number, repo) {
+  const scoped = mutationRepoArgs(repo);
+  const normalize = (item) => {
+    const issueNumber = item?.number ?? item?.index;
+    if (!item || typeof item !== "object" || Array.isArray(item) || String(issueNumber ?? "") !== number) {
+      fail(EXIT.normalize, `could not verify issue ${number} in repository "${repo}": provider returned a missing, malformed, or mismatched issue record`);
+    }
+    return { labels: normalizeIssueLabelRefs(item.labels, provider, number, repo) };
+  };
+  if (provider === "github") {
+    const item = parseJson(run("gh", ["issue", "view", number, "--json", "number,labels", ...scoped]).stdout, "issue label verification");
+    return normalize(item);
+  }
+  const data = parseJson(run("tea", ["issues", number, "--fields", "index,labels", "--output", "json", ...scoped]).stdout, "issue label verification");
+  if (Array.isArray(data) && data.length !== 1) {
+    fail(EXIT.normalize, `could not verify issue ${number} in repository "${repo}": expected exactly one issue record`);
+  }
+  return normalize(Array.isArray(data) ? data[0] : data);
+}
 function normalizePullRequest(item) {
   return {
     ...normalizeItem(item),
@@ -615,6 +716,27 @@ function github(operation, args, options) {
     emit({ provider: "github", operation, repository: repo, items: data.map(normalizeLabel) });
     return;
   }
+  if (operation === "label.delete") {
+    const parsed = parseOptions(args, { id: "value" });
+    const id = requireValue(parsed.id, "--id");
+    validateLabelId("github", id);
+    const targetRepo = requireRepository(repo);
+    const before = listAllLabels("github", targetRepo);
+    const label = findLabelById(before, id, targetRepo);
+    requireUniqueLabelName(before, label, targetRepo);
+    const current = listAllLabels("github", targetRepo);
+    const currentLabel = findLabelById(current, id, targetRepo);
+    const name = requireUniqueLabelName(current, currentLabel, targetRepo);
+    run("gh", ["label", "delete", name, "--yes", ...mutationRepoArgs(targetRepo)]);
+    const beforeIds = labelIds(before, `label deletion in repository "${targetRepo}"`);
+    const afterIds = labelIds(listAllLabels("github", targetRepo), `label deletion in repository "${targetRepo}"`);
+    const expected = beforeIds.filter((item) => item !== id).sort();
+    if (afterIds.includes(id) || JSON.stringify([...afterIds].sort()) !== JSON.stringify(expected)) {
+      fail(EXIT.normalize, `could not verify that only label ID "${id}" was deleted in repository "${targetRepo}"`);
+    }
+    emit({ provider: "github", repository: targetRepo, operation, label_id: id, success: true });
+    return;
+  }
   if (operation === "label.create") {
     const parsed = parseOptions(args, { name: "value", color: "value", description: "value" });
     requireValue(parsed.name, "--name");
@@ -700,8 +822,50 @@ function github(operation, args, options) {
     if (!parsed["body-file"] && !parsed["add-label"].length && !parsed["remove-label"].length) {
       fail(EXIT.usage, "issue edit requires --body-file, --add-label, or --remove-label");
     }
+    if (parsed["add-label"].length || parsed["remove-label"].length) {
+      const targetRepo = requireRepository(repo);
+      resolveUniqueNames(listAllLabels("github", targetRepo), [...parsed["add-label"], ...parsed["remove-label"]], targetRepo);
+      resolveUniqueNames(listAllLabels("github", targetRepo), [...parsed["add-label"], ...parsed["remove-label"]], targetRepo);
+      if (!options.repo)
+        native.push(...mutationRepoArgs(targetRepo));
+    }
     const result = run("gh", native);
     emit({ provider: "github", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
+    return;
+  }
+  if (operation === "issue.remove-label") {
+    const parsed = parseOptions(args, { id: "value" });
+    const number = requireValue(parsed._[0], "issue number");
+    if (!/^\d+$/.test(number) || Number(number) < 1)
+      fail(EXIT.usage, `invalid issue number "${number}"`);
+    const id = requireValue(parsed.id, "--id");
+    validateLabelId("github", id);
+    const targetRepo = requireRepository(repo);
+    const allLabels = listAllLabels("github", targetRepo);
+    const label = findLabelById(allLabels, id, targetRepo);
+    const name = requireUniqueLabelName(allLabels, label, targetRepo);
+    const before = readIssue("github", number, targetRepo).labels;
+    if (!before.some((item) => String(item.id) === id))
+      fail(EXIT.missing, `label ID "${id}" is not attached to issue ${number} in repository "${targetRepo}"`);
+    const current = listAllLabels("github", targetRepo);
+    const currentLabel = findLabelById(current, id, targetRepo);
+    const currentName = requireUniqueLabelName(current, currentLabel, targetRepo);
+    if (currentName !== name)
+      fail(EXIT.normalize, `label ID "${id}" changed identity before removal in repository "${targetRepo}"`);
+    run("gh", ["issue", "edit", number, "--remove-label", currentName, ...mutationRepoArgs(targetRepo)]);
+    const afterLabels = listAllLabels("github", targetRepo);
+    const afterTarget = findLabelById(afterLabels, id, targetRepo);
+    if (requireUniqueLabelName(afterLabels, afterTarget, targetRepo) !== name) {
+      fail(EXIT.normalize, `label ID "${id}" no longer uniquely maps to name "${name}" after issue removal in repository "${targetRepo}"`);
+    }
+    const after = readIssue("github", number, targetRepo).labels;
+    const beforeIds = before.map((item) => String(item.id ?? ""));
+    const afterIds = after.map((item) => String(item.id ?? ""));
+    const expected = beforeIds.filter((item) => item !== id).sort();
+    if (beforeIds.some((item) => !item) || afterIds.some((item) => !item) || afterIds.includes(id) || JSON.stringify([...afterIds].sort()) !== JSON.stringify(expected)) {
+      fail(EXIT.normalize, `could not verify that only label ID "${id}" was removed from issue ${number} in repository "${targetRepo}"`);
+    }
+    emit({ provider: "github", repository: targetRepo, operation, issue_number: Number(number), label_id: id, success: true });
     return;
   }
   if (operation === "pr.edit") {
@@ -834,6 +998,24 @@ function forgejo(operation, args, options) {
     emit({ provider: "forgejo", operation, repository: repo, items: data.map(normalizeLabel) });
     return;
   }
+  if (operation === "label.delete") {
+    const parsed = parseOptions(args, { id: "value" });
+    const id = requireValue(parsed.id, "--id");
+    validateLabelId("forgejo", id);
+    const targetRepo = requireRepository(repo);
+    const before = listAllLabels("forgejo", targetRepo);
+    findLabelById(before, id, targetRepo);
+    findLabelById(listAllLabels("forgejo", targetRepo), id, targetRepo);
+    run("tea", ["labels", "delete", "--id", id, ...mutationRepoArgs(targetRepo)]);
+    const beforeIds = labelIds(before, `label deletion in repository "${targetRepo}"`);
+    const afterIds = labelIds(listAllLabels("forgejo", targetRepo), `label deletion in repository "${targetRepo}"`);
+    const expected = beforeIds.filter((item) => item !== id).sort();
+    if (afterIds.includes(id) || JSON.stringify([...afterIds].sort()) !== JSON.stringify(expected)) {
+      fail(EXIT.normalize, `could not verify that only label ID "${id}" was deleted in repository "${targetRepo}"`);
+    }
+    emit({ provider: "forgejo", repository: targetRepo, operation, label_id: id, success: true });
+    return;
+  }
   if (operation === "label.create") {
     const parsed = parseOptions(args, { name: "value", color: "value", description: "value" });
     requireValue(parsed.name, "--name");
@@ -958,8 +1140,50 @@ function forgejo(operation, args, options) {
     if (!parsed["body-file"] && !parsed["add-label"].length && !parsed["remove-label"].length) {
       fail(EXIT.usage, "issue edit requires --body-file, --add-label, or --remove-label");
     }
+    if (parsed["add-label"].length || parsed["remove-label"].length) {
+      const targetRepo = requireRepository(repo);
+      resolveUniqueNames(listAllLabels("forgejo", targetRepo), [...parsed["add-label"], ...parsed["remove-label"]], targetRepo);
+      resolveUniqueNames(listAllLabels("forgejo", targetRepo), [...parsed["add-label"], ...parsed["remove-label"]], targetRepo);
+      if (!options.repo)
+        native.push(...mutationRepoArgs(targetRepo));
+    }
     const result = run("tea", native);
     emit({ provider: "forgejo", operation, repository: repo, number: Number(number), success: true, url: urlFromOutput(result.stdout) });
+    return;
+  }
+  if (operation === "issue.remove-label") {
+    const parsed = parseOptions(args, { id: "value" });
+    const number = requireValue(parsed._[0], "issue number");
+    if (!/^\d+$/.test(number) || Number(number) < 1)
+      fail(EXIT.usage, `invalid issue number "${number}"`);
+    const id = requireValue(parsed.id, "--id");
+    validateLabelId("forgejo", id);
+    const targetRepo = requireRepository(repo);
+    const allLabels = listAllLabels("forgejo", targetRepo);
+    const label = findLabelById(allLabels, id, targetRepo);
+    const name = requireUniqueLabelName(allLabels, label, targetRepo);
+    const before = readIssue("forgejo", number, targetRepo).labels;
+    if (!before.some((item) => String(item.id) === id))
+      fail(EXIT.missing, `label ID "${id}" is not attached to issue ${number} in repository "${targetRepo}"`);
+    const current = listAllLabels("forgejo", targetRepo);
+    const currentLabel = findLabelById(current, id, targetRepo);
+    const currentName = requireUniqueLabelName(current, currentLabel, targetRepo);
+    if (currentName !== name)
+      fail(EXIT.normalize, `label ID "${id}" changed identity before removal in repository "${targetRepo}"`);
+    run("tea", ["issues", "edit", number, "--remove-labels", currentName, ...mutationRepoArgs(targetRepo)]);
+    const afterLabels = listAllLabels("forgejo", targetRepo);
+    const afterTarget = findLabelById(afterLabels, id, targetRepo);
+    if (requireUniqueLabelName(afterLabels, afterTarget, targetRepo) !== name) {
+      fail(EXIT.normalize, `label ID "${id}" no longer uniquely maps to name "${name}" after issue removal in repository "${targetRepo}"`);
+    }
+    const after = readIssue("forgejo", number, targetRepo).labels;
+    const beforeIds = before.map((item) => String(item.id ?? ""));
+    const afterIds = after.map((item) => String(item.id ?? ""));
+    const expected = beforeIds.filter((item) => item !== id).sort();
+    if (beforeIds.some((item) => !item) || afterIds.some((item) => !item) || afterIds.includes(id) || JSON.stringify([...afterIds].sort()) !== JSON.stringify(expected)) {
+      fail(EXIT.normalize, `could not verify that only label ID "${id}" was removed from issue ${number} in repository "${targetRepo}"`);
+    }
+    emit({ provider: "forgejo", repository: targetRepo, operation, issue_number: Number(number), label_id: id, success: true });
     return;
   }
   if (operation === "pr.edit") {
@@ -1065,8 +1289,8 @@ Global options:
   --limit N                       List limit from 1 to 100 (default: 30)
 
 Resources:
-  provider | capabilities | auth status | repo view | label list|create
-  issue list|view|comments|create|edit|close|comment
+  provider | capabilities | auth status | repo view | label list|create|delete
+  issue list|view|comments|create|edit|remove-label|close|comment
   pr list|view|comments|edit|diff|checks|create|comment|ready|checkout
 
 Options:
@@ -1104,11 +1328,13 @@ if (resource === "capabilities") {
       "repo.view": true,
       "label.list": true,
       "label.create": true,
+      "label.delete": true,
       "issue.list": true,
       "issue.view": true,
       "issue.comments": true,
       "issue.create": true,
       "issue.edit": true,
+      "issue.remove-label": true,
       "pr.edit": true,
       "issue.close": true,
       "issue.comment": true,

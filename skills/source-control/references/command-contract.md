@@ -34,11 +34,13 @@ Global options must precede the resource:
 | `repo view` | none | none |
 | `label list` | none | none |
 | `label create` | `--name TEXT` | `--color HEX`, `--description TEXT` |
+| `label delete` | `--id LABEL_ID` | none |
 | `issue list` | none | `--state open\|closed\|all`, repeated `--label NAME` |
 | `issue view` | `NUMBER` | none |
 | `issue comments` | `NUMBER` | none |
 | `issue create` | `--title TEXT`, `--body-file PATH` | repeated `--label NAME` |
 | `issue edit` | `NUMBER` | `--body-file PATH`, repeated `--add-label NAME`, repeated `--remove-label NAME` |
+| `issue remove-label` | `NUMBER`, `--id LABEL_ID` | none |
 | `issue close` | `NUMBER` | none |
 | `issue comment` | `NUMBER`, `--body-file PATH` | none |
 | `pr list` | none | `--state open\|closed\|all` |
@@ -59,6 +61,19 @@ checks the repository's paginated label list and only reports success when the
 new label is visible. Forgejo label list and create commands use the same
 repository target, including the repository detected from the current Git
 remote.
+
+`label delete --id LABEL_ID` and `issue remove-label NUMBER --id LABEL_ID`
+require a resolved repository and search its complete label set. Forgejo label
+deletion uses Tea's repository-scoped ID option. GitHub deletion and both
+providers' issue detachment use native name-based commands only after resolving
+the exact ID to a unique label name. The wrapper verifies deletion or detachment
+with a follow-up read and reports success only when the selected ID is absent
+and, for issue detachment, all other label IDs remain attached. GitHub label
+resolution uses a 1000-item listing limit; reaching that limit is treated as
+inconclusive. Forgejo resolution traverses all pages and fails if the page cap
+is reached. IDs must use the provider's native format (Forgejo positive integer,
+GitHub `LA_` identifier). Name-based `issue edit` label mutations preflight
+duplicate names and fail before writing when a name maps to multiple labels.
 
 Create, edit, close, comment, and draft-promotion commands are externally visible writes. Checkout
 changes the local worktree. Use them only when the user's request authorizes the

@@ -31,6 +31,14 @@ Use `scripts/sc issue edit <number> --add-label <name>` and
 labels; the wrapper translates these options to the native GitHub or Forgejo
 CLI syntax.
 
+Use `scripts/sc label delete --id <label-id>` to delete one repository label
+and `scripts/sc issue remove-label <number> --id <label-id>` to detach one
+label ID from an issue. Both commands resolve the complete label set in the
+same repository for reads and writes. Name-based native mutations require a
+unique exact name for the selected ID, and success is reported only after a
+follow-up read verifies the requested state. Name-based `issue edit` label
+mutations fail before writing when a name is ambiguous.
+
 Use `scripts/sc pr ready <number>` to promote a draft pull request. The
 provider-neutral operation maps to `gh pr ready <number>` on GitHub and
 `tea pulls edit <number> --ready` on Forgejo, then returns normalized provider,
