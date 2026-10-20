@@ -26,4 +26,4 @@ orchestration:
   reviewers: ["general", "risk-security-operability"]
 reconciliation:
   close_child_on_merge: true
-  close_feature_on_complete: false
+  close_feature_on_complete: true
