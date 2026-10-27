@@ -11,7 +11,8 @@ var EXIT = {
   missing: 5,
   auth: 6,
   native: 7,
-  normalize: 8
+  normalize: 8,
+  version: 9
 };
 var COMMENT_PAGE_SIZE = 30;
 var MAX_COMMENT_PAGES = 100;
@@ -19,6 +20,13 @@ var REPO_SEARCH_PAGE_SIZE = 100;
 var MAX_REPO_SEARCH_PAGES = 100;
 var LABEL_PAGE_SIZE = 100;
 var MAX_LABEL_PAGES = 100;
+// tea 0.15.0 adds inherited org-level labels to `tea labels list`; 0.14.1
+// omits them, making existing lifecycle labels appear missing.
+var MIN_TEA_VERSION = "0.15.0";
+// gh 2.57.0 adds `gh auth status --active`; sc's pr-check JSON fields need
+// only 2.50.0, so auth status sets the minimum.
+var MIN_GH_VERSION = "2.57.0";
+var SKIP_VERSION_CHECK_ENV = "SC_SKIP_VERSION_CHECK";
 var VERSION = "0.14.1";
 var sensitiveValues = new Set;
 function rememberSensitiveValues() {
@@ -62,9 +70,11 @@ function executableExists(name) {
   });
   return result.status === 0;
 }
-function run(name, args, { allowFailure = false } = {}) {
+function run(name, args, { allowFailure = false, skipVersionCheck = false } = {}) {
   if (!executableExists(name))
     fail(EXIT.missing, `required executable not found: ${name}`);
+  if (!skipVersionCheck)
+    requireToolVersion(name);
   const result = spawnSync(name, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   if (result.error?.code === "ENOENT")
     fail(EXIT.missing, `required executable not found: ${name}`);
@@ -74,6 +84,81 @@ function run(name, args, { allowFailure = false } = {}) {
     fail(EXIT.native, `${name} command failed with exit code ${result.status ?? "unknown"}`);
   }
   return result;
+}
+var TOOL_REQUIREMENTS = {
+  tea: {
+    minimum: MIN_TEA_VERSION,
+    pattern: /\bVersion:\s*(v?\d+\.\d+(?:\.\d+)?[0-9A-Za-z.+-]*)/i,
+    symptom: "label list omits the org-level labels a repository inherits, so existing labels look missing",
+    fix: "brew upgrade tea"
+  },
+  gh: {
+    minimum: MIN_GH_VERSION,
+    pattern: /\bgh version\s+(v?\d+\.\d+(?:\.\d+)?[0-9A-Za-z.+-]*)/i,
+    symptom: "auth status --active (2.57.0) and pr checks --json (2.50.0) are unavailable, so those commands fail with unknown flag or field errors",
+    fix: "brew upgrade gh (other platforms: https://github.com/cli/cli#installation)"
+  }
+};
+var probedTools = new Map;
+var verifiedTools = new Set;
+function parseSemver(value) {
+  const match = value.match(/^v?(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  if (!match)
+    return null;
+  const core = [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)];
+  const prerelease = match[4] ?? null;
+  return { core, prerelease, text: `${core.join(".")}${prerelease ? `-${prerelease}` : ""}` };
+}
+function compareSemver(left, right) {
+  for (let index = 0;index < 3; index += 1) {
+    if (left.core[index] !== right.core[index])
+      return left.core[index] < right.core[index] ? -1 : 1;
+  }
+  if (left.prerelease === right.prerelease)
+    return 0;
+  if (left.prerelease === null)
+    return 1;
+  if (right.prerelease === null)
+    return -1;
+  return left.prerelease < right.prerelease ? -1 : 1;
+}
+function probeToolVersion(name) {
+  const cached = probedTools.get(name);
+  if (cached)
+    return cached;
+  const result = spawnSync(name, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const output = (result.stdout ?? "").replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
+  const parsed = result.status === 0 ? output.match(TOOL_REQUIREMENTS[name].pattern)?.[1] : undefined;
+  const version = parsed ? parseSemver(parsed) : null;
+  const probe = version ? { text: version.text, problem: null } : { text: null, problem: result.status === 0 ? `unrecognized "${name} --version" output` : `"${name} --version" failed with exit code ${result.status ?? "unknown"}` };
+  probedTools.set(name, probe);
+  return probe;
+}
+function toolVersionInfo(name) {
+  const { minimum } = TOOL_REQUIREMENTS[name];
+  const version = executableExists(name) ? probeToolVersion(name).text : null;
+  const parsed = version ? parseSemver(version) : null;
+  return { tool: name, version, minimum, supported: parsed ? compareSemver(parsed, parseSemver(minimum)) >= 0 : null };
+}
+function requireToolVersion(name) {
+  if (name !== "tea" && name !== "gh")
+    return;
+  if (verifiedTools.has(name))
+    return;
+  verifiedTools.add(name);
+  const { minimum, symptom, fix } = TOOL_REQUIREMENTS[name];
+  if (process.env[SKIP_VERSION_CHECK_ENV] === "1") {
+    process.stderr.write(`sc: warning: ${SKIP_VERSION_CHECK_ENV}=1 set; not verifying that ${name} is at least ${minimum}
+`);
+    return;
+  }
+  const probe = probeToolVersion(name);
+  if (probe.text === null) {
+    fail(EXIT.version, `could not determine the installed ${name} version (${probe.problem}); sc requires ${name} >= ${minimum}. Fix: install a standard ${name} release, or set ${SKIP_VERSION_CHECK_ENV}=1 to bypass this check`);
+  }
+  if (compareSemver(parseSemver(probe.text), parseSemver(minimum)) < 0) {
+    fail(EXIT.version, `${name} ${probe.text} is older than the minimum supported version ${minimum}: ${symptom}. Fix: ${fix}, or set ${SKIP_VERSION_CHECK_ENV}=1 to bypass this check`);
+  }
 }
 function runForgejoPullList(args) {
   const result = run("tea", args, { allowFailure: true });
@@ -487,7 +572,7 @@ function detectProvider(options) {
   if (host === "github.com")
     return "github";
   if (host && executableExists("tea")) {
-    const result = run("tea", ["logins", "list", "--output", "json"], { allowFailure: true });
+    const result = run("tea", ["logins", "list", "--output", "json"], { allowFailure: true, skipVersionCheck: true });
     if (result.status === 0) {
       try {
         const loginData = JSON.parse(result.stdout);
@@ -751,7 +836,7 @@ function github(operation, args, options) {
   }
   if (operation === "auth.status") {
     const result = run("gh", ["auth", "status", "--active"], { allowFailure: true });
-    emit({ provider: "github", operation, repository: repo, authenticated: result.status === 0 });
+    emit({ provider: "github", operation, repository: repo, authenticated: result.status === 0, tool: toolVersionInfo("gh") });
     return;
   }
   if (operation === "repo.view") {
@@ -1046,7 +1131,7 @@ function forgejo(operation, args, options) {
   }
   if (operation === "auth.status") {
     const result = run("tea", ["whoami"], { allowFailure: true });
-    emit({ provider: "forgejo", operation, repository: repo, authenticated: result.status === 0 });
+    emit({ provider: "forgejo", operation, repository: repo, authenticated: result.status === 0, tool: toolVersionInfo("tea") });
     return;
   }
   if (operation === "repo.view") {
@@ -1298,6 +1383,9 @@ Options:
   -v, --version                   Show version
 
 Successful commands write one normalized JSON object to stdout. Diagnostics go to stderr.
+
+Environment:
+  SC_SKIP_VERSION_CHECK=1         Skip the minimum tea (${MIN_TEA_VERSION}) and gh (${MIN_GH_VERSION}) version check
 `;
 var commandLine = process.argv.slice(2);
 if (commandLine.some((value) => value === "--help" || value === "-h")) {
@@ -1316,7 +1404,7 @@ if (!resource)
 var provider = detectProvider(options);
 var repo = repository(options);
 if (resource === "provider") {
-  emit({ provider, operation: "provider", repository: repo });
+  emit({ provider, operation: "provider", repository: repo, tool: toolVersionInfo(provider === "github" ? "gh" : "tea") });
   process.exit(0);
 }
 if (resource === "capabilities") {
@@ -1324,6 +1412,7 @@ if (resource === "capabilities") {
     provider,
     operation: "capabilities",
     repository: repo,
+    tool: toolVersionInfo(provider === "github" ? "gh" : "tea"),
     capabilities: {
       "repo.view": true,
       "label.list": true,

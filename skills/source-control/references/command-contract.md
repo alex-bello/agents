@@ -15,6 +15,27 @@ The standalone binary still requires `git`, `gh`, or `tea` on `PATH` for
 operations that use those tools. `sc --help` and `sc --version` do not require
 a Git repository or provider executable.
 
+### Native tool versions
+
+Before its first native call for a provider, `sc` runs `tea --version` or
+`gh --version` (once per invocation, only for the provider in use) and compares
+the numeric semantic version with the minimum: `tea` 0.15.0 and `gh` 2.57.0.
+ANSI escapes are stripped; pre-release and build suffixes are accepted, and a
+pre-release sorts below its own release. Provider detection and `sc provider`
+or `sc capabilities` never fail on an old tool; they report it instead.
+
+- Tool older than the minimum: exit `9`; stderr names the tool, installed
+  version, minimum, symptom, and fix.
+- Tool present but its version cannot be determined (unrecognized output or a
+  failing `--version`): exit `9` with a "could not determine" message.
+- Tool absent: exit `5`, as for any missing executable.
+- `SC_SKIP_VERSION_CHECK=1` skips the check and writes a one-line warning to
+  stderr. It does not mask a missing tool.
+
+`provider`, `capabilities`, and `auth status` add an additive `tool` object:
+`{"tool":"tea","version":"0.15.1","minimum":"0.15.0","supported":true}`.
+`version` and `supported` are `null` when the tool is absent or unparseable.
+
 Global options must precede the resource:
 
 | Option | Meaning |
@@ -244,6 +265,7 @@ diagnostic.
 | `6` | Authentication failed | authenticate the selected native CLI |
 | `7` | Native CLI command failed | read stderr; do not fall back to a raw API |
 | `8` | Native output could not be normalized | report the incompatible output |
+| `9` | `tea` or `gh` is older than the supported minimum, or its version cannot be determined | upgrade the tool (for example `brew upgrade tea`) |
 
 Diagnostics go to stderr. Credentials and authenticated remote URLs must never
 be included in stdout.

@@ -21,6 +21,27 @@ uses `git`, `gh`, and `tea` from `PATH` for repository and provider operations.
 Use `--help` and `--version` to inspect the CLI; both work without a provider
 configuration.
 
+## Prerequisites
+
+`sc` verifies the native tool for the provider in use before its first native
+call (`tea` for Forgejo, `gh` for GitHub; the other tool is never checked).
+
+| Tool | Minimum | Why |
+| --- | --- | --- |
+| `tea` | 0.15.0 | 0.14.1 `label list` omits org-level labels the repository inherits, so labels such as `status/committed` look missing |
+| `gh` | 2.57.0 | `auth status --active` was added in 2.57.0; `pr checks --json` needs 2.50.0 |
+
+A tool that is too old exits with code `9` and a message on stderr naming the
+tool, installed and required versions, the symptom, and the fix, for example:
+`sc: tea 0.14.1 is older than the minimum supported version 0.15.0: label list
+omits the org-level labels a repository inherits, so existing labels look
+missing. Fix: brew upgrade tea, or set SC_SKIP_VERSION_CHECK=1 to bypass this
+check`. Stdout stays empty. Upgrade the tool rather than working around it.
+`SC_SKIP_VERSION_CHECK=1` bypasses the check with a one-line warning; use it
+only knowingly, because results from an old tool can be silently incomplete.
+`sc provider`, `capabilities`, and `auth status` report the detected tool,
+version, and minimum.
+
 Git-native operations include status, diff, log, show, remotes, fetch, pull,
 push, branch creation/listing, switch/checkout, add, commit, merge, rebase,
 and tags. `scripts/sc` is for provider metadata and collaboration operations

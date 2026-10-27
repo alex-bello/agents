@@ -17,11 +17,20 @@ async function mockExecutable(directory, name, source) {
   await chmod(target, 0o755);
 }
 
+// Stubs answer `--version` with a supported version unless they handle it themselves.
+const supportedVersionOutput = {
+  tea: "printf 'Version: \\033[1m0.15.1\\033[0m\\tgolang: 1.26.5\\n'",
+  gh: "printf 'gh version 2.57.0 (2024-10-14)\\n'",
+};
+
 async function fixture(t, scripts) {
   const directory = await mkdtemp(path.join(tmpdir(), "source-control-test-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   for (const [name, source] of Object.entries(scripts)) {
-    await mockExecutable(directory, name, source);
+    const answersVersion = source.includes("--version") || !(name in supportedVersionOutput);
+    await mockExecutable(directory, name, answersVersion
+      ? source
+      : `if [ "$1" = "--version" ]; then ${supportedVersionOutput[name]}; exit 0; fi\n${source}`);
   }
   return directory;
 }
@@ -95,9 +104,10 @@ test("preserves ordinary environment values in normalized repository output", as
   assert.equal(output.item.url, "https://github.com/operator/agents");
 });
 
-test("detects GitHub from origin without calling gh", async (t) => {
+test("detects GitHub from origin without running gh beyond its version probe", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: 'if [ "$1" = "--version" ]; then printf "gh version 2.57.0 (2024-10-14)\\n"; exit 0; fi; exit 99',
   });
   const result = invoke(directory, ["provider"]);
   assert.equal(result.status, 0, result.stderr);
@@ -105,6 +115,7 @@ test("detects GitHub from origin without calling gh", async (t) => {
     provider: "github",
     operation: "provider",
     repository: "owner/project",
+    tool: { tool: "gh", version: "2.57.0", minimum: "2.57.0", supported: true },
   });
 });
 
@@ -1583,4 +1594,224 @@ else exit 99; fi`,
     provider: "forgejo", operation: "issue.close", repository: "owner/project", number: 9,
     success: true, url: null,
   });
+});
+
+// --- Native tool minimum-version checks ---
+
+const teaLabels = `[{"id":1,"name":"status/committed","color":"0e8a16","description":"Ready"}]`;
+const forgejoRemote = 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"';
+const githubRemote = 'printf "%s\\n" "git@github.com:owner/project.git"';
+
+// A tea stub whose `--version` output is the given shell snippet and whose other calls log argv.
+function teaStub(versionOutput, log) {
+  return `
+echo "$*" >> "${log}"
+if [ "$1" = "--version" ]; then ${versionOutput}; exit 0; fi
+if [ "$1 $2" = "labels list" ]; then printf '%s\\n' '${teaLabels}'; exit 0; fi
+if [ "$1 $2" = "labels create" ]; then exit 0; fi
+exit 99`;
+}
+
+function teaVersion(text) {
+  return `printf 'Version: %s\\tgolang: 1.26.5\\tbuilt with: Homebrew\\n' '${text}'`;
+}
+
+async function versionFixture(t, versionOutput) {
+  const directory = await fixture(t, { git: forgejoRemote, tea: "" });
+  const log = path.join(directory, "tea.log");
+  await mockExecutable(directory, "tea", teaStub(versionOutput, log));
+  return { directory, log };
+}
+
+const labelList = ["--provider", "forgejo", "--repo", "owner/project", "label", "list"];
+
+test("rejects a tea older than the minimum with a dedicated exit code and actionable message", async (t) => {
+  const { directory } = await versionFixture(t, teaVersion("0.14.1"));
+  const result = invoke(directory, labelList);
+  assert.equal(result.status, 9);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /tea 0\.14\.1 is older than the minimum supported version 0\.15\.0/);
+  assert.match(result.stderr, /label list omits the org-level labels/);
+  assert.match(result.stderr, /Fix: brew upgrade tea/);
+  assert.match(result.stderr, /SC_SKIP_VERSION_CHECK=1/);
+});
+
+test("accepts tea at exactly the minimum and newer", async (t) => {
+  for (const version of ["0.15.0", "0.15.1", "0.16.0", "1.0.0"]) {
+    const { directory } = await versionFixture(t, teaVersion(version));
+    const result = invoke(directory, labelList);
+    assert.equal(result.status, 0, `${version}: ${result.stderr}`);
+    assert.equal(JSON.parse(result.stdout).items[0].name, "status/committed");
+    assert.equal(result.stderr, "");
+  }
+});
+
+test("compares versions numerically so 0.9 is older than 0.15", async (t) => {
+  for (const version of ["0.9", "0.9.2", "0.2.0", "0.14.99"]) {
+    const { directory } = await versionFixture(t, teaVersion(version));
+    const result = invoke(directory, labelList);
+    assert.equal(result.status, 9, `${version} should be rejected`);
+    assert.match(result.stderr, /is older than the minimum supported version 0\.15\.0/);
+  }
+  const { directory } = await versionFixture(t, teaVersion("0.100.0"));
+  assert.equal(invoke(directory, labelList).status, 0);
+});
+
+test("parses ANSI-wrapped tea version output", async (t) => {
+  const ansi = (text) => `printf 'Version: \\033[1m%s\\033[0m\\tgolang: 1.26.5\\tbuilt with: Homebrew\\n' '${text}'`;
+  const old = await versionFixture(t, ansi("0.14.1"));
+  const rejected = invoke(old.directory, labelList);
+  assert.equal(rejected.status, 9);
+  assert.match(rejected.stderr, /tea 0\.14\.1 is older/);
+  assert.doesNotMatch(rejected.stderr, /\x1b/);
+  const current = await versionFixture(t, ansi("0.15.1"));
+  assert.equal(invoke(current.directory, labelList).status, 0);
+});
+
+test("handles pre-release and build suffixes", async (t) => {
+  const rc = await versionFixture(t, teaVersion("0.15.0-rc1"));
+  const rejected = invoke(rc.directory, labelList);
+  assert.equal(rejected.status, 9, "a pre-release of the minimum is older than the minimum");
+  assert.match(rejected.stderr, /tea 0\.15\.0-rc1 is older/);
+  for (const version of ["0.15.1-rc1+build.5", "0.16.0+dirty", "v0.15.2"]) {
+    const { directory } = await versionFixture(t, teaVersion(version));
+    assert.equal(invoke(directory, labelList).status, 0, version);
+  }
+});
+
+test("fails distinctly when the tea version cannot be parsed", async (t) => {
+  for (const output of ["printf 'something unexpected\\n'", "printf ''", "printf 'Version: dev\\n'"]) {
+    const { directory } = await versionFixture(t, output);
+    const result = invoke(directory, labelList);
+    assert.equal(result.status, 9);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /could not determine the installed tea version/);
+    assert.doesNotMatch(result.stderr, /is older than/);
+  }
+  const directory = await fixture(t, { git: forgejoRemote });
+  await mockExecutable(directory, "tea", 'if [ "$1" = "--version" ]; then exit 3; fi; exit 99');
+  const failed = invoke(directory, labelList);
+  assert.equal(failed.status, 9);
+  assert.match(failed.stderr, /"tea --version" failed with exit code 3/);
+});
+
+test("reports a missing tool with the missing-executable code, not the version code", async (t) => {
+  const directory = await fixture(t, { git: forgejoRemote });
+  const result = invoke(directory, labelList, { PATH: directory });
+  assert.equal(result.status, 5);
+  assert.match(result.stderr, /required executable not found: tea/);
+  assert.equal(result.stdout, "");
+});
+
+test("checks only the tool for the provider in use", async (t) => {
+  const github = await fixture(t, { git: githubRemote });
+  await mockExecutable(github, "tea", "exit 99");
+  await mockExecutable(github, "gh", `
+if [ "$1" = "--version" ]; then printf 'gh version 2.57.0 (2024-10-14)\\n'; exit 0; fi
+printf '%s\\n' '[{"id":"L1","name":"bug","color":"d73a4a","description":""}]'`);
+  const ok = invoke(github, ["--provider", "github", "label", "list"]);
+  assert.equal(ok.status, 0, ok.stderr);
+
+  // An old or absent tea must not break GitHub, and an old gh must not break Forgejo.
+  const teaOld = await fixture(t, { git: githubRemote });
+  await mockExecutable(teaOld, "tea", teaVersion("0.1.0").replace(/^/, 'if [ "$1" = "--version" ]; then ') + "; exit 0; fi; exit 99");
+  await mockExecutable(teaOld, "gh", `
+if [ "$1" = "--version" ]; then printf 'gh version 2.60.0 (2024-10-14)\\n'; exit 0; fi
+printf '%s\\n' '[]'`);
+  assert.equal(invoke(teaOld, ["--provider", "github", "label", "list"]).status, 0);
+
+  const { directory } = await versionFixture(t, teaVersion("0.15.1"));
+  await mockExecutable(directory, "gh", 'if [ "$1" = "--version" ]; then printf "gh version 1.0.0 (2020-01-01)\\n"; exit 0; fi; exit 99');
+  assert.equal(invoke(directory, labelList).status, 0);
+});
+
+test("rejects a gh older than the minimum and names the gh-specific symptom", async (t) => {
+  const directory = await fixture(t, { git: githubRemote });
+  await mockExecutable(directory, "gh", 'if [ "$1" = "--version" ]; then printf "gh version 2.56.0 (2024-09-01)\\nhttps://github.com/cli/cli/releases/tag/v2.56.0\\n"; exit 0; fi; exit 99');
+  const result = invoke(directory, ["--provider", "github", "label", "list"]);
+  assert.equal(result.status, 9);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /gh 2\.56\.0 is older than the minimum supported version 2\.57\.0/);
+  assert.match(result.stderr, /auth status --active/);
+  assert.match(result.stderr, /brew upgrade gh/);
+});
+
+test("compares gh versions numerically", async (t) => {
+  const stub = (version) => `if [ "$1" = "--version" ]; then printf 'gh version ${version} (2024-01-01)\\n'; exit 0; fi; printf '%s\\n' '[]'`;
+  for (const [version, status] of [["2.9.0", 9], ["2.56.9", 9], ["2.57.0", 0], ["2.100.0", 0], ["3.0.0", 0]]) {
+    const directory = await fixture(t, { git: githubRemote });
+    await mockExecutable(directory, "gh", stub(version));
+    assert.equal(invoke(directory, ["--provider", "github", "label", "list"]).status, status, version);
+  }
+});
+
+test("SC_SKIP_VERSION_CHECK=1 bypasses the check with a single warning line", async (t) => {
+  const { directory, log } = await versionFixture(t, teaVersion("0.14.1"));
+  const result = invoke(directory, ["--provider", "forgejo", "--repo", "owner/project", "label", "create", "--name", "status/committed"], { SC_SKIP_VERSION_CHECK: "1" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).success, true);
+  const warnings = result.stderr.trim().split("\n");
+  assert.equal(warnings.length, 1, "one warning per tool per invocation");
+  assert.match(warnings[0], /^sc: warning: SC_SKIP_VERSION_CHECK=1 set; not verifying that tea is at least 0\.15\.0$/);
+  assert.doesNotMatch(await readFile(log, "utf8"), /--version/, "the tool is not probed when the check is skipped");
+});
+
+test("SC_SKIP_VERSION_CHECK does not mask a missing tool", async (t) => {
+  const directory = await fixture(t, { git: forgejoRemote });
+  const result = invoke(directory, labelList, { PATH: directory, SC_SKIP_VERSION_CHECK: "1" });
+  assert.equal(result.status, 5);
+});
+
+test("verifies each tool once per invocation, before the first native call", async (t) => {
+  const { directory, log } = await versionFixture(t, teaVersion("0.15.1"));
+  const result = invoke(directory, ["--provider", "forgejo", "--repo", "owner/project", "label", "create", "--name", "status/committed"]);
+  assert.equal(result.status, 0, result.stderr);
+  const calls = (await readFile(log, "utf8")).trim().split("\n");
+  assert.equal(calls[0], "--version");
+  assert.equal(calls.filter((call) => call === "--version").length, 1);
+  assert.ok(calls.length > 2, "create plus verification listing ran after a single check");
+});
+
+test("a failed check makes no native calls beyond the version probe", async (t) => {
+  const { directory, log } = await versionFixture(t, teaVersion("0.14.1"));
+  invoke(directory, labelList);
+  assert.equal((await readFile(log, "utf8")).trim(), "--version");
+});
+
+test("provider, capabilities, and auth status report tool, version, and minimum", async (t) => {
+  const { directory } = await versionFixture(t, teaVersion("0.14.1"));
+  await mockExecutable(directory, "tea", `
+if [ "$1" = "--version" ]; then ${teaVersion("0.14.1")}; exit 0; fi
+if [ "$1" = "whoami" ]; then exit 0; fi
+exit 99`);
+  const args = ["--provider", "forgejo", "--repo", "owner/project"];
+  const expected = { tool: "tea", version: "0.14.1", minimum: "0.15.0", supported: false };
+
+  const provider = invoke(directory, [...args, "provider"]);
+  assert.equal(provider.status, 0, "diagnostics report an old tool instead of failing");
+  assert.deepEqual(JSON.parse(provider.stdout).tool, expected);
+  assert.equal(provider.stderr, "");
+
+  const capabilities = invoke(directory, [...args, "capabilities"]);
+  assert.equal(capabilities.status, 0, capabilities.stderr);
+  assert.deepEqual(JSON.parse(capabilities.stdout).tool, expected);
+
+  const old = invoke(directory, [...args, "auth", "status"]);
+  assert.equal(old.status, 9, "auth status is a native call and enforces the minimum");
+
+  const current = await versionFixture(t, teaVersion("0.15.1"));
+  await mockExecutable(current.directory, "tea", `
+if [ "$1" = "--version" ]; then ${teaVersion("0.15.1")}; exit 0; fi
+if [ "$1" = "whoami" ]; then exit 0; fi
+exit 99`);
+  const auth = invoke(current.directory, [...args, "auth", "status"]);
+  assert.equal(auth.status, 0, auth.stderr);
+  assert.deepEqual(JSON.parse(auth.stdout).tool, { tool: "tea", version: "0.15.1", minimum: "0.15.0", supported: true });
+});
+
+test("provider reports a null version when the tool is absent", async (t) => {
+  const directory = await fixture(t, { git: githubRemote });
+  const result = invoke(directory, ["provider"], { PATH: directory });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).tool, { tool: "gh", version: null, minimum: "2.57.0", supported: null });
 });

@@ -14,7 +14,7 @@ export type NativeResult = {
   error?: Error & { code?: string };
 };
 
-export type CommandOptions = { allowFailure?: boolean };
+export type CommandOptions = { allowFailure?: boolean; skipVersionCheck?: boolean };
 export type JsonRecord = Record<string, any>;
 export type ParsedOptions = { _: string[]; [key: string]: any };
 
@@ -26,4 +26,5 @@ export type ExitCode =
   | 5 // missing executable or file
   | 6 // authentication
   | 7 // native command failure
-  | 8; // output normalization
+  | 8 // output normalization
+  | 9; // unsupported or undeterminable native tool version

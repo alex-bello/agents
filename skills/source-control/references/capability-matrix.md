@@ -1,7 +1,8 @@
 # Capability matrix
 
 The v1 contract targets behavior confirmed for `tea` 0.15.1 (repository view
-checked 2026-09-28) and `gh` 2.96.
+checked 2026-09-28) and `gh` 2.96. Minimum supported versions are `tea` 0.15.0 and `gh` 2.57.0
+(see `SKILL.md`).
 
 | Capability | Forgejo (`tea`) | GitHub (`gh`) |
 | --- | --- | --- |
