@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import process from "node:process";
-import type { CommandOptions, ExitCode, GlobalOptions, JsonRecord, NativeResult, ParsedOptions, Provider } from "./types.ts";
+import type { CommandOptions, ExitCode, GlobalOptions, JsonRecord, JsonValue, NativeResult, OptionKind, ParsedOptions, Provider } from "./types.ts";
 
 const EXIT: { usage: 2; detection: 3; unsupported: 4; missing: 5; auth: 6; native: 7; normalize: 8; version: 9 } = {
   usage: 2,
@@ -55,7 +55,7 @@ function sanitizeText(value: string): string {
     .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[redacted]");
 }
 
-function sanitizeValue(value: any): any {
+function sanitizeValue(value: unknown): unknown {
   if (typeof value === "string") return sanitizeText(value);
   if (Array.isArray(value)) return value.map(sanitizeValue);
   if (value && typeof value === "object") {
@@ -86,7 +86,9 @@ function run(name: string, args: string[], { allowFailure = false, skipVersionCh
   if (!executableExists(name)) fail(EXIT.missing, `required executable not found: ${name}`);
   if (!skipVersionCheck) requireToolVersion(name);
   const result = spawnSync(name, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  if (result.error?.code === "ENOENT") fail(EXIT.missing, `required executable not found: ${name}`);
+  if (result.error && "code" in result.error && result.error.code === "ENOENT") {
+    fail(EXIT.missing, `required executable not found: ${name}`);
+  }
   if (result.status !== 0 && !allowFailure) {
     if (result.stderr) process.stderr.write(sanitizeText(result.stderr));
     fail(EXIT.native, `${name} command failed with exit code ${result.status ?? "unknown"}`);
@@ -140,6 +142,8 @@ function probeToolVersion(name: ToolName): { text: string | null; problem: strin
   if (cached) return cached;
   const result = spawnSync(name, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   // Strip ANSI escapes: tea colors the version number.
+  // The provider colors version output; remove ANSI control sequences before parsing it.
+  // eslint-disable-next-line no-control-regex -- Provider version output may include ANSI color controls.
   const output = (result.stdout ?? "").replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
   const parsed = result.status === 0 ? output.match(TOOL_REQUIREMENTS[name].pattern)?.[1] : undefined;
   const version = parsed ? parseSemver(parsed) : null;
@@ -178,7 +182,7 @@ function requireToolVersion(name: string): void {
 function runForgejoPullList(args: string[]): string {
   const result = run("tea", args, { allowFailure: true });
   if (result.status === 0) return result.stdout;
-  if (!/invalid field ['\"]draft['\"]/i.test(result.stderr)) {
+  if (!/invalid field ['"]draft['"]/i.test(result.stderr)) {
     if (result.stderr) process.stderr.write(sanitizeText(result.stderr));
     fail(EXIT.native, `tea command failed with exit code ${result.status ?? "unknown"}`);
   }
@@ -199,17 +203,35 @@ function runForgejoPullList(args: string[]): string {
   return fallback.stdout;
 }
 
-function nativeCommand(name: string, args: string[]): string {
-  const safeArgs = args.filter((value) => !sensitiveValues.has(value));
-  return [name, ...safeArgs].map((value) => /\s/.test(value) ? JSON.stringify(value) : value).join(" ");
-}
-
-function parseJson(text: string, context: string): any {
+function parseJson(text: string, context: string): unknown {
   try {
-    return JSON.parse(text);
+    const value: unknown = JSON.parse(text);
+    return value;
   } catch {
     fail(EXIT.normalize, `could not normalize ${context} output as JSON`);
   }
+}
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requireJsonRecord(value: unknown, context: string): JsonRecord {
+  if (!isJsonRecord(value)) fail(EXIT.normalize, `could not normalize ${context} output: expected a JSON object`);
+  return value;
+}
+
+function requireJsonRecords(value: unknown, context: string): JsonRecord[] {
+  if (!Array.isArray(value)) fail(EXIT.normalize, `could not normalize ${context} output: expected a JSON array`);
+  return value.map((item, index) => requireJsonRecord(item, `${context} item ${index + 1}`));
+}
+
+function parseJsonRecord(text: string, context: string): JsonRecord {
+  return requireJsonRecord(parseJson(text, context), context);
+}
+
+function parseJsonRecords(text: string, context: string): JsonRecord[] {
+  return requireJsonRecords(parseJson(text, context), context);
 }
 
 function commentNormalizationFailure(context: string, expectedShape: string): never {
@@ -219,7 +241,7 @@ function commentNormalizationFailure(context: string, expectedShape: string): ne
 function parseCommentList(text: string, context: string): JsonRecord[] {
   const trimmed = text.trim();
   if (trimmed === "" || /^no comments(?: found| available)?[.!]?$/i.test(trimmed)) return [];
-  let data;
+  let data: unknown;
   try {
     data = JSON.parse(trimmed);
   } catch {
@@ -228,7 +250,10 @@ function parseCommentList(text: string, context: string): JsonRecord[] {
   if (!Array.isArray(data)) {
     commentNormalizationFailure(context, "a JSON array or empty output");
   }
-  return data;
+  return data.map((item, index) => {
+    if (!isJsonRecord(item)) commentNormalizationFailure(context, `a JSON array of comment objects (item ${index + 1} was not an object)`);
+    return item;
+  });
 }
 
 function parseForgejoCommentPage(text: string, context: string): { comments: JsonRecord[]; nextPage: number | "implicit" | null } {
@@ -237,7 +262,7 @@ function parseForgejoCommentPage(text: string, context: string): { comments: Jso
     return { comments: [], nextPage: null };
   }
 
-  let data;
+  let data: unknown;
   try {
     data = JSON.parse(trimmed);
   } catch {
@@ -245,26 +270,34 @@ function parseForgejoCommentPage(text: string, context: string): { comments: Jso
   }
 
   if (Array.isArray(data)) {
+    const comments = data.map((item, index) => {
+      if (!isJsonRecord(item)) commentNormalizationFailure(context, `a JSON array of comment objects (item ${index + 1} was not an object)`);
+      return item;
+    });
     return {
-      comments: data,
-      nextPage: data.length === COMMENT_PAGE_SIZE ? "implicit" : null,
+      comments,
+      nextPage: comments.length === COMMENT_PAGE_SIZE ? "implicit" : null,
     };
   }
 
-  if (!data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.comments)) {
+  if (!isJsonRecord(data) || !Array.isArray(data.comments)) {
     commentNormalizationFailure(context, "a JSON array or empty output");
   }
 
-  if (!data.pagination || typeof data.pagination !== "object" || Array.isArray(data.pagination)) {
+  if (!isJsonRecord(data.pagination)) {
     commentNormalizationFailure(context, "a JSON array or an object with comments and pagination.next");
   }
 
   const nextPage = data.pagination.next;
-  if (nextPage !== null && (!Number.isInteger(nextPage) || nextPage < 1)) {
+  if (nextPage !== null && (typeof nextPage !== "number" || !Number.isInteger(nextPage) || nextPage < 1)) {
     commentNormalizationFailure(context, "pagination.next to be null or a positive integer page number");
   }
 
-  return { comments: data.comments, nextPage };
+  const comments = data.comments.map((item, index) => {
+    if (!isJsonRecord(item)) commentNormalizationFailure(context, `a JSON array of comment objects (item ${index + 1} was not an object)`);
+    return item;
+  });
+  return { comments, nextPage };
 }
 
 function parseForgejoCommentPages(number: string, scoped: string[], operation: string): JsonRecord[] {
@@ -298,8 +331,7 @@ function findForgejoRepository(owner: string, name: string, isPrivate: boolean, 
     const output = run("tea", ["repos", "search", name, "--owner", owner, "--private", String(isPrivate),
       "--fields", "description,name,owner,url,permission,type", "--limit", String(REPO_SEARCH_PAGE_SIZE),
       "--page", String(page), "--output", "json"]).stdout;
-    const data = parseJson(output, operation);
-    if (!Array.isArray(data)) fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
+    const data = parseJsonRecords(output, operation);
     const item = data.find((candidate) => candidate.name === name && scalar(candidate.owner) === owner);
     if (item) return item;
     if (data.length < REPO_SEARCH_PAGE_SIZE) return null;
@@ -311,8 +343,7 @@ function listForgejoRepository(owner: string, name: string, operation: string): 
   for (let page = 1; page <= MAX_REPO_SEARCH_PAGES; page += 1) {
     const output = run("tea", ["repos", "list", "--owner", owner, "--limit", String(REPO_SEARCH_PAGE_SIZE),
       "--page", String(page), "--fields", "description,name,owner,url,permission,type", "--output", "json"]).stdout;
-    const data = parseJson(output, operation);
-    if (!Array.isArray(data)) fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
+    const data = parseJsonRecords(output, operation);
     const item = data.find((candidate) => candidate.name === name && scalar(candidate.owner) === owner);
     if (item) return item;
     if (data.length < REPO_SEARCH_PAGE_SIZE) return null;
@@ -321,25 +352,29 @@ function listForgejoRepository(owner: string, name: string, operation: string): 
 }
 
 function parseGitHubCommentList(text: string, context: string): JsonRecord[] {
-  let data;
+  let data: unknown;
   try {
     data = JSON.parse(text);
   } catch {
     commentNormalizationFailure(context, "a JSON object with a comments array");
   }
-  if (!data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.comments)) {
+  if (!isJsonRecord(data) || !Array.isArray(data.comments)) {
     commentNormalizationFailure(context, "a JSON object with a comments array");
   }
-  return data.comments;
+  return data.comments.map((item, index) => {
+    if (!isJsonRecord(item)) commentNormalizationFailure(context, `a JSON array of comment objects (item ${index + 1} was not an object)`);
+    return item;
+  });
 }
 
-function scalar(value: any, fallback: any = null): any {
+function scalar(value: unknown, fallback: JsonValue = null): JsonValue {
   if (value === undefined || value === null) return fallback;
-  if (typeof value === "object") return value.login ?? value.username ?? value.name ?? fallback;
-  return value;
+  if (isJsonRecord(value)) return value.login ?? value.username ?? value.name ?? fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  return fallback;
 }
 
-function labels(value: any): any[] {
+function labels(value: unknown): JsonValue[] {
   if (!Array.isArray(value)) {
     if (typeof value === "string") return value ? value.split(",").map((item) => item.trim()) : [];
     return [];
@@ -381,12 +416,12 @@ function normalizeLabel(item: JsonRecord): JsonRecord {
   };
 }
 
-function normalizeIssueLabelRefs(value: any, provider: Provider, number: string, repo: string): JsonRecord[] {
+function normalizeIssueLabelRefs(value: unknown, provider: Provider, number: string, repo: string): JsonRecord[] {
   if (!Array.isArray(value)) {
     fail(EXIT.normalize, `could not verify issue ${number} labels in repository "${repo}": expected a labels array`);
   }
   return value.map((item, index) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
+    if (!isJsonRecord(item)) {
       fail(EXIT.normalize, `could not verify issue ${number} labels in repository "${repo}": label ${index + 1} was not an object`);
     }
     const rawId = item.id ?? item.index;
@@ -412,8 +447,7 @@ function mutationRepoArgs(repo: string): string[] {
 function listAllLabels(provider: Provider, repo: string): JsonRecord[] {
   const scoped = mutationRepoArgs(repo);
   if (provider === "github") {
-    const data = parseJson(run("gh", ["label", "list", "--limit", "1000", "--json", "id,name,color,description", ...scoped]).stdout, "label resolution");
-    if (!Array.isArray(data)) fail(EXIT.normalize, "could not normalize label resolution output: expected a JSON array");
+    const data = parseJsonRecords(run("gh", ["label", "list", "--limit", "1000", "--json", "id,name,color,description", ...scoped]).stdout, "label resolution");
     if (data.length >= 1000) fail(EXIT.normalize, `could not verify complete label set for repository ${repo}; GitHub label listing reached its 1000-item limit`);
     return data;
   }
@@ -463,17 +497,20 @@ function validateLabelId(provider: Provider, id: string): void {
   if (!valid) fail(EXIT.usage, `malformed ${provider} label ID "${id}"`);
 }
 
-function readIssue(provider: Provider, number: string, repo: string): JsonRecord {
+function readIssue(provider: Provider, number: string, repo: string): JsonRecord & { labels: JsonRecord[] } {
   const scoped = mutationRepoArgs(repo);
-  const normalize = (item: any): JsonRecord => {
-    const issueNumber = item?.number ?? item?.index;
-    if (!item || typeof item !== "object" || Array.isArray(item) || String(issueNumber ?? "") !== number) {
+  const normalize = (value: unknown): JsonRecord & { labels: JsonRecord[] } => {
+    if (!isJsonRecord(value)) {
       fail(EXIT.normalize, `could not verify issue ${number} in repository "${repo}": provider returned a missing, malformed, or mismatched issue record`);
     }
-    return { labels: normalizeIssueLabelRefs(item.labels, provider, number, repo) };
+    const issueNumber = value.number ?? value.index;
+    if (String(issueNumber ?? "") !== number) {
+      fail(EXIT.normalize, `could not verify issue ${number} in repository "${repo}": provider returned a missing, malformed, or mismatched issue record`);
+    }
+    return { labels: normalizeIssueLabelRefs(value.labels, provider, number, repo) };
   };
   if (provider === "github") {
-    const item = parseJson(run("gh", ["issue", "view", number, "--json", "number,labels", ...scoped]).stdout, "issue label verification");
+    const item = parseJsonRecord(run("gh", ["issue", "view", number, "--json", "number,labels", ...scoped]).stdout, "issue label verification");
     return normalize(item);
   }
   const data = parseJson(run("tea", ["issues", number, "--fields", "index,labels", "--output", "json", ...scoped]).stdout, "issue label verification");
@@ -503,7 +540,13 @@ function parseGlobal(argv: string[]): { options: GlobalOptions; rest: string[] }
   let index = 0;
   while (index < argv.length && argv[index].startsWith("--")) {
     const flag = argv[index++];
-    if (flag === "--provider") options.provider = argv[index++];
+    if (flag === "--provider") {
+      const provider = argv[index++];
+      if (provider !== "auto" && provider !== "forgejo" && provider !== "github") {
+        fail(EXIT.usage, "--provider must be auto, forgejo, or github");
+      }
+      options.provider = provider;
+    }
     else if (flag === "--repo") options.repo = argv[index++];
     else if (flag === "--remote") options.remote = argv[index++];
     else if (flag === "--limit") options.limit = Number(argv[index++]);
@@ -518,27 +561,35 @@ function parseGlobal(argv: string[]): { options: GlobalOptions; rest: string[] }
   return { options, rest: argv.slice(index) };
 }
 
-function parseOptions(args: string[], definitions: Record<string, "boolean" | "value" | "many">): ParsedOptions {
-  const values: ParsedOptions = { _: [] };
-  for (const [name, type] of Object.entries(definitions)) values[name] = type === "many" ? [] : false;
+function parseOptions<const Definitions extends { [Name in keyof Definitions]: OptionKind }>(
+  args: string[],
+  definitions: Definitions,
+): ParsedOptions<Definitions> {
+  const positionals: string[] = [];
+  const values: Record<string, string | boolean | string[] | undefined> = { _: positionals };
+  for (const [name, type] of Object.entries(definitions)) values[name] = type === "many" ? [] : type === "boolean" ? false : "";
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
     if (!value.startsWith("--")) {
-      values._.push(value);
+      positionals.push(value);
       continue;
     }
     const name = value.slice(2);
-    const type = definitions[name];
+    const type = (definitions as Record<string, OptionKind>)[name];
     if (!type) fail(EXIT.usage, `unknown option: ${value}`);
     if (type === "boolean") values[name] = true;
     else {
       const next = args[++index];
       if (next === undefined) fail(EXIT.usage, `${value} requires a value`);
-      if (type === "many") values[name].push(next);
+      if (type === "many") {
+        const previous = values[name];
+        if (!Array.isArray(previous)) fail(EXIT.usage, `${value} cannot accept repeated values`);
+        previous.push(next);
+      }
       else values[name] = next;
     }
   }
-  return values;
+  return values as ParsedOptions<Definitions>;
 }
 
 function remoteUrl(remote: string): string {
@@ -570,10 +621,15 @@ function detectProvider(options: GlobalOptions): Provider {
     const result = run("tea", ["logins", "list", "--output", "json"], { allowFailure: true, skipVersionCheck: true });
     if (result.status === 0) {
       try {
-        const loginData = JSON.parse(result.stdout);
-        const entries = Array.isArray(loginData) ? loginData : loginData.logins ?? [];
+        const loginData = parseJson(result.stdout, "tea login detection");
+        const entries = Array.isArray(loginData)
+          ? loginData
+          : isJsonRecord(loginData) && Array.isArray(loginData.logins)
+            ? loginData.logins
+            : [];
         const hosts = entries.map((entry) => {
-          const candidate = entry.url ?? entry.host ?? entry.name ?? "";
+          if (!isJsonRecord(entry)) return "";
+          const candidate = String(entry.url ?? entry.host ?? entry.name ?? "");
           try {
             return new URL(candidate).hostname.toLowerCase();
           } catch {
@@ -604,9 +660,7 @@ function forgejoLabelRepoArgs(options: GlobalOptions): string[] {
 }
 
 function listForgejoLabels(scoped: string[], limit: number, page = 1, operation = "label.list"): JsonRecord[] {
-  const data = parseJson(run("tea", ["labels", "list", "--limit", String(limit), "--page", String(page), "--output", "json", ...scoped]).stdout, operation);
-  if (!Array.isArray(data)) fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
-  return data;
+  return parseJsonRecords(run("tea", ["labels", "list", "--limit", String(limit), "--page", String(page), "--output", "json", ...scoped]).stdout, operation);
 }
 
 function requireFile(path: string, flag: string): string {
@@ -617,24 +671,28 @@ function requireFile(path: string, flag: string): string {
   return contents;
 }
 
-function requireValue(value: any, description: string): string {
-  if (!value) fail(EXIT.usage, `${description} is required`);
+function requireValue(value: unknown, description: string): string {
+  if (typeof value !== "string" || !value) fail(EXIT.usage, `${description} is required`);
   return value;
 }
 
 function urlFromOutput(text: string): string | null {
+  // eslint-disable-next-line no-control-regex -- Exclude terminal control bytes from native CLI URLs.
   return text.match(/https?:\/\/[^\s\x00-\x1f\x7f]+/)?.[0] ?? null;
 }
 
 function plainTerminalText(text: string): string {
   return text
+    // eslint-disable-next-line no-control-regex -- Remove OSC hyperlinks emitted by terminal-aware tools.
     .replace(/\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+    // eslint-disable-next-line no-control-regex -- Remove ANSI styling emitted by terminal-aware tools.
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 }
 
 function extractOutputUrls(text: string): string[] {
-  const urls = [];
+  const urls: string[] = [];
   for (const candidateText of [text, plainTerminalText(text)]) {
+    // eslint-disable-next-line no-control-regex -- Exclude terminal control bytes from native CLI URLs.
     for (const match of candidateText.matchAll(/https?:\/\/[^\s\x00-\x1f\x7f]+/g)) {
       urls.push(match[0].replace(/[),.;:!?\]}>'"`]+$/, ""));
     }
@@ -643,12 +701,12 @@ function extractOutputUrls(text: string): string[] {
 }
 
 function structuredOutputUrls(output: string): { foundStructuredOutput: boolean; urls: string[] } {
-  const urls = [];
+  const urls: string[] = [];
   let foundStructuredOutput = false;
   const structuredUrlFields = new Set(["url", "html_url", "web_url"]);
 
-  function collect(value: any, key: string | null = null): void {
-    if (typeof value === "string" && structuredUrlFields.has(key)) {
+  function collect(value: unknown, key: string | null = null): void {
+    if (typeof value === "string" && key !== null && structuredUrlFields.has(key)) {
       urls.push(value);
       return;
     }
@@ -656,14 +714,14 @@ function structuredOutputUrls(output: string): { foundStructuredOutput: boolean;
       for (const item of value) collect(item);
       return;
     }
-    if (value && typeof value === "object") {
+    if (isJsonRecord(value)) {
       for (const [childKey, childValue] of Object.entries(value)) collect(childValue, childKey);
     }
   }
 
   for (const candidate of [output.trim(), ...output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)]) {
     try {
-      const parsed = JSON.parse(candidate);
+      const parsed: unknown = JSON.parse(candidate);
       if (parsed && typeof parsed === "object") {
         collect(parsed);
         foundStructuredOutput = true;
@@ -720,6 +778,8 @@ function forgejoCreatedIssueCandidate(output: string, repository: string | null)
   }
 
   const finalLine = lines.at(-1);
+  if (finalLine === undefined) fail(EXIT.normalize, "could not normalize Forgejo issue creation output: created issue URL is missing");
+  // eslint-disable-next-line no-control-regex -- Reject terminal controls in the created issue URL.
   const urls = [...finalLine.matchAll(/https?:\/\/[^\s\x00-\x1f\x7f]+/g)].map((match) => match[0]);
   if (urls.length === 0) {
     fail(EXIT.normalize, "could not normalize Forgejo issue creation output: created issue URL is missing from the final line");
@@ -736,15 +796,14 @@ function forgejoCreatedIssueCandidate(output: string, repository: string | null)
 function normalizeForgejoCreatedIssue(output: string, repository: string | null, title: string, scoped: string[]): JsonRecord {
   const candidate = forgejoCreatedIssueCandidate(output, repository);
   const verification = parseJson(run("tea", ["issues", String(candidate.number), "--fields", "index,title,url", "--output", "json", ...scoped]).stdout, "issue.create verification");
-  const items = Array.isArray(verification) ? verification : [verification];
+  const items = Array.isArray(verification)
+    ? requireJsonRecords(verification, "issue.create verification")
+    : [requireJsonRecord(verification, "issue.create verification")];
   if (items.length !== 1) {
     fail(EXIT.normalize, `could not verify Forgejo issue creation: expected exactly one structured issue, found ${items.length}`);
   }
 
   const item = items[0];
-  if (!item || typeof item !== "object") {
-    fail(EXIT.normalize, "could not verify Forgejo issue creation: structured issue is malformed");
-  }
   const verifiedNumber = Number(item.index ?? item.number);
   if (!Number.isSafeInteger(verifiedNumber) || verifiedNumber < 1 || verifiedNumber !== candidate.number) {
     fail(EXIT.normalize, "could not verify Forgejo issue creation: structured issue number does not match creation output");
@@ -771,6 +830,7 @@ function normalizeForgejoCreatedIssue(output: string, repository: string | null,
 }
 
 function pullRequestIdentity(value: string, provider: Provider, repository: string | null, expectedHost: string | null): { number: number; url: string } | null {
+  if (!repository) return null;
   let source;
   try {
     source = new URL(value);
@@ -804,13 +864,19 @@ function pullRequestIdentity(value: string, provider: Provider, repository: stri
   };
 }
 
-function normalizeCreatedPullRequest(output: string, provider: Provider, repository: string | null, parsed: ParsedOptions, expectedHost: string | null = null): JsonRecord {
+function normalizeCreatedPullRequest(
+  output: string,
+  provider: Provider,
+  repository: string | null,
+  parsed: Pick<ParsedOptions<{ base: "value"; head: "value"; title: "value" }>, "base" | "head" | "title">,
+  expectedHost: string | null = null,
+): JsonRecord {
   const structured = structuredOutputUrls(output);
   const urls = structured.foundStructuredOutput ? structured.urls : extractOutputUrls(output);
-  const candidates = [...new Map(urls
+  const identities = urls
     .map((url) => pullRequestIdentity(url, provider, repository, expectedHost))
-    .filter(Boolean)
-    .map((candidate) => [candidate.url, candidate])).values()];
+    .filter((candidate): candidate is { number: number; url: string } => candidate !== null);
+  const candidates = [...new Map(identities.map((candidate) => [candidate.url, candidate])).values()];
 
   if (candidates.length === 0) {
     fail(EXIT.normalize, `could not normalize pull-request creation output: no canonical pull-request URL found for repository ${repository}`);
@@ -819,7 +885,9 @@ function normalizeCreatedPullRequest(output: string, provider: Provider, reposit
     fail(EXIT.normalize, `could not normalize pull-request creation output: ambiguous canonical pull-request URLs: ${candidates.map((candidate) => candidate.url).join(", ")}`);
   }
 
-  const { number, url } = candidates[0];
+  const candidate = candidates[0];
+  if (!candidate) fail(EXIT.normalize, "could not normalize pull-request creation output: no canonical pull-request URL found");
+  const { number, url } = candidate;
 
   return {
     provider,
@@ -839,7 +907,7 @@ function github(operation: string, args: string[], options: GlobalOptions): void
   const repo = repository(options);
   const scoped = repoArgs("github", options);
   if (operation === "label.list") {
-    const data = parseJson(run("gh", ["label", "list", "--limit", String(options.limit), "--json", "id,name,color,description", ...scoped]).stdout, operation);
+    const data = parseJsonRecords(run("gh", ["label", "list", "--limit", String(options.limit), "--json", "id,name,color,description", ...scoped]).stdout, operation);
     emit({ provider: "github", operation, repository: repo, items: data.map(normalizeLabel) });
     return;
   }
@@ -866,12 +934,12 @@ function github(operation: string, args: string[], options: GlobalOptions): void
   }
   if (operation === "label.create") {
     const parsed = parseOptions(args, { name: "value", color: "value", description: "value" });
-    requireValue(parsed.name, "--name");
-    const native = ["label", "create", parsed.name, ...scoped];
+    const name = requireValue(parsed.name, "--name");
+    const native = ["label", "create", name, ...scoped];
     if (parsed.color) native.push("--color", parsed.color);
     if (parsed.description) native.push("--description", parsed.description);
     const result = run("gh", native);
-    emit({ provider: "github", operation, repository: repo, name: parsed.name, success: true, output: result.stdout.trim() });
+    emit({ provider: "github", operation, repository: repo, name, success: true, output: result.stdout.trim() });
     return;
   }
   if (operation === "auth.status") {
@@ -881,11 +949,11 @@ function github(operation: string, args: string[], options: GlobalOptions): void
   }
   if (operation === "repo.view") {
     const target = options.repo ? [options.repo] : [];
-    const data = parseJson(run("gh", ["repo", "view", ...target, "--json", "nameWithOwner,description,url,visibility,isFork,defaultBranchRef"]).stdout, operation);
+    const data = parseJsonRecord(run("gh", ["repo", "view", ...target, "--json", "nameWithOwner,description,url,visibility,isFork,defaultBranchRef"]).stdout, operation);
     emit({ provider: "github", operation, repository: data.nameWithOwner ?? repo, item: {
       name: data.nameWithOwner ?? repo, description: data.description ?? null, url: data.url ?? null,
-      visibility: data.visibility?.toLowerCase() ?? null, fork: Boolean(data.isFork),
-      defaultBranch: data.defaultBranchRef?.name ?? null,
+      visibility: typeof data.visibility === "string" ? data.visibility.toLowerCase() : null, fork: Boolean(data.isFork),
+      defaultBranch: isJsonRecord(data.defaultBranchRef) ? data.defaultBranchRef.name ?? null : null,
     } });
     return;
   }
@@ -894,7 +962,7 @@ function github(operation: string, args: string[], options: GlobalOptions): void
     const native = ["issue", "list", "--limit", String(options.limit), "--state", parsed.state || "open",
       "--json", "number,title,body,state,author,url,labels,createdAt,updatedAt", ...scoped];
     for (const label of parsed.label) native.push("--label", label);
-    const data = parseJson(run("gh", native).stdout, operation);
+    const data = parseJsonRecords(run("gh", native).stdout, operation);
     emit({ provider: "github", operation, repository: repo, items: data.map(normalizeItem) });
     return;
   }
@@ -903,17 +971,21 @@ function github(operation: string, args: string[], options: GlobalOptions): void
     const fields = operation.endsWith("comments")
       ? "number,comments"
       : "number,title,body,state,author,url,labels,createdAt,updatedAt";
-    const data = parseJson(run("gh", ["issue", "view", number, "--json", fields, ...scoped]).stdout, operation);
     if (operation.endsWith("comments")) {
-      emit({ provider: "github", operation, repository: repo, number: Number(number), items: (data.comments ?? []).map(normalizeComment) });
-    } else emit({ provider: "github", operation, repository: repo, item: normalizeItem(data) });
+      const comments = parseGitHubCommentList(run("gh", ["issue", "view", number, "--json", fields, ...scoped]).stdout, operation);
+      emit({ provider: "github", operation, repository: repo, number: Number(number), items: comments.map(normalizeComment) });
+    } else {
+      const data = parseJsonRecord(run("gh", ["issue", "view", number, "--json", fields, ...scoped]).stdout, operation);
+      emit({ provider: "github", operation, repository: repo, item: normalizeItem(data) });
+    }
     return;
   }
   if (operation === "issue.create") {
     const parsed = parseOptions(args, { title: "value", "body-file": "value", label: "many" });
-    requireValue(parsed.title, "--title");
-    requireFile(parsed["body-file"], "--body-file");
-    const native = ["issue", "create", "--title", parsed.title, "--body-file", parsed["body-file"], ...scoped];
+    const title = requireValue(parsed.title, "--title");
+    const bodyFile = requireValue(parsed["body-file"], "--body-file");
+    requireFile(bodyFile, "--body-file");
+    const native = ["issue", "create", "--title", title, "--body-file", bodyFile, ...scoped];
     for (const label of parsed.label) native.push("--label", label);
     const result = run("gh", native);
     emit({ provider: "github", operation, repository: repo, success: true, url: urlFromOutput(result.stdout) });
@@ -999,7 +1071,7 @@ function github(operation: string, args: string[], options: GlobalOptions): void
   }
   if (operation === "pr.list") {
     const parsed = parseOptions(args, { state: "value" });
-    const data = parseJson(run("gh", ["pr", "list", "--limit", String(options.limit), "--state", parsed.state || "open",
+    const data = parseJsonRecords(run("gh", ["pr", "list", "--limit", String(options.limit), "--state", parsed.state || "open",
       "--json", "number,title,body,state,author,url,labels,createdAt,updatedAt,baseRefName,headRefName,isDraft,mergeable", ...scoped]).stdout, operation);
     emit({ provider: "github", operation, repository: repo, items: data.map(normalizePullRequest) });
     return;
@@ -1013,7 +1085,7 @@ function github(operation: string, args: string[], options: GlobalOptions): void
       const comments = parseGitHubCommentList(run("gh", ["pr", "view", number, "--json", fields, ...scoped]).stdout, operation);
       emit({ provider: "github", operation, repository: repo, number: Number(number), items: comments.map(normalizeComment) });
     } else {
-      const data = parseJson(run("gh", ["pr", "view", number, "--json", fields, ...scoped]).stdout, operation);
+      const data = parseJsonRecord(run("gh", ["pr", "view", number, "--json", fields, ...scoped]).stdout, operation);
       emit({ provider: "github", operation, repository: repo, item: normalizePullRequest(data) });
     }
     return;
@@ -1027,11 +1099,11 @@ function github(operation: string, args: string[], options: GlobalOptions): void
   if (operation === "pr.checks") {
     const number = requireValue(args[0], "pull request number");
     const result = run("gh", ["pr", "checks", number, "--json", "name,state,bucket,link,workflow", ...scoped], { allowFailure: true });
-    if (![0, 8].includes(result.status)) {
+    if (result.status !== 0 && result.status !== 8) {
       if (result.stderr) process.stderr.write(sanitizeText(result.stderr));
       fail(EXIT.native, `gh command failed with exit code ${result.status}`);
     }
-    const data = parseJson(result.stdout, operation);
+    const data = parseJsonRecords(result.stdout, operation);
     emit({ provider: "github", operation, repository: repo, number: Number(number), items: data.map((item) => ({
       name: item.name ?? null, state: item.bucket ?? item.state ?? null, url: item.link ?? null, workflow: item.workflow ?? null,
     })) });
@@ -1039,9 +1111,11 @@ function github(operation: string, args: string[], options: GlobalOptions): void
   }
   if (operation === "pr.create") {
     const parsed = parseOptions(args, { base: "value", head: "value", title: "value", "body-file": "value", draft: "boolean", label: "many" });
-    for (const field of ["base", "head", "title"]) requireValue(parsed[field], `--${field}`);
+    const base = requireValue(parsed.base, "--base");
+    const head = requireValue(parsed.head, "--head");
+    const title = requireValue(parsed.title, "--title");
     requireFile(parsed["body-file"], "--body-file");
-    const native = ["pr", "create", "--base", parsed.base, "--head", parsed.head, "--title", parsed.title,
+    const native = ["pr", "create", "--base", base, "--head", head, "--title", title,
       "--body-file", parsed["body-file"], ...scoped];
     if (parsed.draft) native.push("--draft");
     for (const label of parsed.label) native.push("--label", label);
@@ -1101,18 +1175,19 @@ function forgejo(operation: string, args: string[], options: GlobalOptions): voi
   if (operation === "label.create") {
     const parsed = parseOptions(args, { name: "value", color: "value", description: "value" });
     requireValue(parsed.name, "--name");
-    const color = String(parsed.color === false || parsed.color == null ? "808080" : parsed.color).replace(/^#/, "");
+    const color = String(parsed.color || "808080").replace(/^#/, "");
     if (!/^[0-9a-fA-F]{6}$/.test(color)) {
       fail(EXIT.usage, `--color must be a six-digit hexadecimal RGB value (for example 808080 or #808080); received "${parsed.color}"`);
     }
-    const native = ["labels", "create", "--name", parsed.name, ...labelScoped];
+    const name = requireValue(parsed.name, "--name");
+    const native = ["labels", "create", "--name", name, ...labelScoped];
     native.push("--color", color.toUpperCase());
     if (parsed.description) native.push("--description", parsed.description);
     const result = run("tea", native);
     let visible = false;
     for (let page = 1; page <= MAX_LABEL_PAGES; page += 1) {
       const items = listForgejoLabels(labelScoped, LABEL_PAGE_SIZE, page, "label.create verification");
-      if (items.some((item) => item.name === parsed.name)) {
+      if (items.some((item) => item.name === name)) {
         visible = true;
         break;
       }
@@ -1145,21 +1220,24 @@ function forgejo(operation: string, args: string[], options: GlobalOptions): voi
     emit({ provider: "forgejo", operation, repository: repo, item: {
       name: `${scalar(item.owner, owner)}/${item.name ?? name}`,
       description: item.description ?? null, url: item.url ?? null, visibility,
-      fork: (item.type ?? "").toLowerCase() === "fork", defaultBranch: item.default_branch ?? item.defaultBranch ?? null,
+      fork: typeof item.type === "string" && item.type.toLowerCase() === "fork", defaultBranch: item.default_branch ?? item.defaultBranch ?? null,
     } });
     return;
   }
   if (operation === "issue.list" || operation === "pr.list") {
-    const parsed = parseOptions(args, operation === "issue.list" ? { state: "value", label: "many" } : { state: "value" });
+    const state = operation === "issue.list"
+      ? parseOptions(args, { state: "value", label: "many" }).state
+      : parseOptions(args, { state: "value" }).state;
+    const labels = operation === "issue.list" ? parseOptions(args, { state: "value", label: "many" }).label : [];
     const entity = operation.startsWith("issue") ? "issues" : "pulls";
     const fields = operation.startsWith("issue")
       ? "index,title,body,state,author,url,labels,created,updated"
       : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable,draft,ci";
-    const native = [entity, "list", "--limit", String(options.limit), "--state", parsed.state || "open",
+    const native = [entity, "list", "--limit", String(options.limit), "--state", state || "open",
       "--fields", fields, "--output", "json", ...scoped];
-    if (parsed.label?.length) native.push("--labels", parsed.label.join(","));
+    if (labels.length) native.push("--labels", labels.join(","));
     const output = operation === "pr.list" ? runForgejoPullList(native) : run("tea", native).stdout;
-    const data = parseJson(output, operation);
+    const data = parseJsonRecords(output, operation);
     emit({ provider: "forgejo", operation, repository: repo, items: data.map(normalizePullRequest) });
     return;
   }
@@ -1169,8 +1247,8 @@ function forgejo(operation: string, args: string[], options: GlobalOptions): voi
     const fields = entity === "issues"
       ? "index,title,body,state,author,url,labels,created,updated"
       : "index,title,body,state,author,url,labels,created,updated,base,head,mergeable,draft";
-    const data = parseJson(run("tea", [entity, number, "--fields", fields, "--output", "json", ...scoped]).stdout, operation);
-    const item = Array.isArray(data) ? data[0] : data;
+    const data: unknown = parseJson(run("tea", [entity, number, "--fields", fields, "--output", "json", ...scoped]).stdout, operation);
+    const item = requireJsonRecord(Array.isArray(data) ? data[0] : data, operation);
     emit({ provider: "forgejo", operation, repository: repo, item: entity === "pulls" ? normalizePullRequest(item) : normalizeItem(item) });
     return;
   }
@@ -1272,12 +1350,13 @@ function forgejo(operation: string, args: string[], options: GlobalOptions): voi
   if (operation === "pr.diff" || operation === "pr.checks") {
     const number = requireValue(args[0], "pull request number");
     const field = operation.endsWith("diff") ? "diff" : "ci";
-    const data = parseJson(run("tea", ["pulls", number, "--fields", `index,${field}`, "--output", "json", ...scoped]).stdout, operation);
-    const item = Array.isArray(data) ? data[0] : data;
+    const data: unknown = parseJson(run("tea", ["pulls", number, "--fields", `index,${field}`, "--output", "json", ...scoped]).stdout, operation);
+    const item = requireJsonRecord(Array.isArray(data) ? data[0] : data, operation);
     if (operation.endsWith("diff")) {
       emit({ provider: "forgejo", operation, repository: repo, number: Number(number), diff: item.diff ?? "" });
     } else {
-      const checks = Array.isArray(item.ci) ? item.ci : item.ci ? [item.ci] : [];
+      const rawChecks: unknown[] = Array.isArray(item.ci) ? item.ci : item.ci ? [item.ci] : [];
+      const checks = rawChecks.map((check, index) => requireJsonRecord(check, `${operation} check ${index + 1}`));
       emit({ provider: "forgejo", operation, repository: repo, number: Number(number), items: checks.map((check) => ({
         name: check.name ?? check.context ?? null, state: check.state ?? check.status ?? null,
         url: check.url ?? check.target_url ?? null, workflow: check.workflow ?? null,
@@ -1287,20 +1366,22 @@ function forgejo(operation: string, args: string[], options: GlobalOptions): voi
   }
   if (operation === "pr.create") {
     const parsed = parseOptions(args, { base: "value", head: "value", title: "value", "body-file": "value", draft: "boolean", label: "many" });
-    for (const field of ["base", "head", "title"]) requireValue(parsed[field], `--${field}`);
+    const base = requireValue(parsed.base, "--base");
+    const sourceHead = requireValue(parsed.head, "--head");
+    const title = requireValue(parsed.title, "--title");
     const body = requireFile(parsed["body-file"], "--body-file");
     const owner = repo?.split("/")[0];
-    const head = owner && parsed.head.includes("/") && !parsed.head.includes(":")
-      ? `${owner}:${parsed.head}`
-      : parsed.head;
-    const native = ["pulls", "create", "--base", parsed.base, "--head", head, "--title", parsed.title,
+    const head = owner && sourceHead.includes("/") && !sourceHead.includes(":")
+      ? `${owner}:${sourceHead}`
+      : sourceHead;
+    const native = ["pulls", "create", "--base", base, "--head", head, "--title", title,
       "--description", body, ...scoped];
     if (parsed.draft) native.push("--draft");
     if (parsed.label.length) native.push("--labels", parsed.label.join(","));
     const result = run("tea", native, { allowFailure: true });
     if (result.status !== 0) {
       if (result.stderr) process.stderr.write(sanitizeText(result.stderr));
-      fail(EXIT.native, `tea command failed with exit code ${result.status ?? "unknown"} while creating PR from base "${parsed.base}" to head "${parsed.head}" in repository "${repo}"; native command: tea pulls create`);
+      fail(EXIT.native, `tea command failed with exit code ${result.status ?? "unknown"} while creating PR from base "${base}" to head "${sourceHead}" in repository "${repo}"; native command: tea pulls create`);
     }
     emit(normalizeCreatedPullRequest(result.stdout, "forgejo", repo, parsed, hostFromRemote(remoteUrl(options.remote))));
     return;

@@ -15,8 +15,18 @@ export type NativeResult = {
 };
 
 export type CommandOptions = { allowFailure?: boolean; skipVersionCheck?: boolean };
-export type JsonRecord = Record<string, any>;
-export type ParsedOptions = { _: string[]; [key: string]: any };
+export type JsonValue = null | boolean | number | string | JsonRecord | JsonValue[];
+export type JsonRecord = { [key: string]: JsonValue | undefined };
+export type OptionKind = "boolean" | "value" | "many";
+export type ParsedOptions<Definitions extends { [Name in keyof Definitions]: OptionKind } = Record<string, OptionKind>> = {
+  _: string[];
+} & {
+  [Name in keyof Definitions as Definitions[Name] extends "many" ? Name : never]: string[];
+} & {
+  [Name in keyof Definitions as Definitions[Name] extends "boolean" ? Name : never]: boolean;
+} & {
+  [Name in keyof Definitions as Definitions[Name] extends "value" ? Name : never]: string;
+};
 
 export type ExitCode =
   | 0 // success

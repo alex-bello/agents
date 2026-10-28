@@ -1,6 +1,6 @@
 ---
 name: source-control
-version: 1.1.2
+version: 1.2.0
 description: Use Git for local source-control operations and one deterministic command interface for Forgejo and GitHub repository, issue, and pull-request operations. Use when an agent needs to inspect repository state, manage branches, list or view issues and pull requests, read comments or diffs, check CI, create, edit, or close an issue or pull request, comment, or check out a pull request.
 ---
 
@@ -13,12 +13,19 @@ noninteractively, and returns normalized JSON.
 
 The command implementation is maintained in `src/cli.ts`. `scripts/sc` is the
 generated Node-compatible bundle used by installed skills, so invoking it does
-not require Bun. From the repository root, `pnpm run sc:build` regenerates that
-bundle and produces a host-specific standalone executable at `dist/sc`. Use
+not require Bun. The installed CLI runtime supports Node.js 18 or newer. The
+repository's development and validation toolchain requires Node.js 20.19 or
+newer. From the repository root, `pnpm run sc:lint` lints the TypeScript source,
+`pnpm run sc:typecheck` checks it with strict TypeScript settings, and
+`pnpm run validate` runs both checks plus repository validation. `pnpm test`
+runs those gates and the regression suites.
+
+Run `pnpm run sc:build` to regenerate the portable Node bundle and produce a
+host-specific standalone executable at `dist/sc`. Use
 `pnpm run sc:dev -- <arguments>` to run the TypeScript source through Bun, or
-run `./dist/sc <arguments>` after building. The standalone executable still
-uses `git`, `gh`, and `tea` from `PATH` for repository and provider operations.
-Use `--help` and `--version` to inspect the CLI; both work without a provider
+run `./dist/sc <arguments>` after building. The standalone binary still uses
+`git`, `gh`, and `tea` from `PATH` for repository and provider operations. Use
+`--help` and `--version` to inspect the CLI; both work without a provider
 configuration.
 
 ## Prerequisites

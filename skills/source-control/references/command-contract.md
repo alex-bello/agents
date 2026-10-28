@@ -7,10 +7,14 @@ scripts/sc [global options] <resource> <action> [arguments]
 ```
 
 The source is `src/cli.ts`. `scripts/sc` is its generated Node-compatible
-bundle and remains the installed-skill entry point. From the repository root,
-run `pnpm run sc:build` to regenerate that bundle and build the host-specific
-standalone `dist/sc` executable. `pnpm run sc:dev -- <arguments>` runs the
-TypeScript source with Bun; `./dist/sc <arguments>` runs the built binary.
+bundle and remains the installed-skill entry point. The CLI runtime supports
+Node.js 18 or newer; repository lint and validation tooling requires Node.js
+20.19 or newer. Use `pnpm run sc:lint` and `pnpm run sc:typecheck` to check the
+TypeScript source; `pnpm run validate` runs those checks and repository
+validation. Run `pnpm run sc:build` to regenerate the Node bundle and build the
+host-specific standalone `dist/sc` executable. `pnpm run sc:dev -- <arguments>`
+runs the TypeScript source with Bun; `./dist/sc <arguments>` runs the built
+binary.
 The standalone binary still requires `git`, `gh`, or `tea` on `PATH` for
 operations that use those tools. `sc --help` and `sc --version` do not require
 a Git repository or provider executable.
