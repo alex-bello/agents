@@ -280,6 +280,10 @@ elif [ "$1 $2" = "labels list" ]; then
     printf '%s\\n' '[]'
     ;;
   esac
+elif [ "$1" = "api" ]; then
+  printf '%s\\n' "$*" >> "${callsFile}"
+  printf '%s\\n' 'HTTP/1.1 404 Not Found' >&2
+  printf '%s\\n' '{"message":"GetOrgByName"}'
 else exit 99; fi`,
     });
     t.after(() => rm(`${callsFile}.created`, { force: true }));
@@ -294,11 +298,12 @@ else exit 99; fi`,
     const listed = invoke(directory, ["--provider", "forgejo", ...target.args, "label", "list"]);
     assert.equal(listed.status, 0, `${target.name}: ${listed.stderr}`);
     assert.deepEqual(JSON.parse(listed.stdout).items, [{
-      id: 17, name: "wayfinder", color: "7C3AED", description: "Lifecycle work",
+      id: 17, name: "wayfinder", color: "7C3AED", description: "Lifecycle work", scope: "repository",
     }]);
     const nativeCalls = await readFile(callsFile, "utf8");
     assert.match(nativeCalls, new RegExp(`labels create .*--repo ${target.repo}`));
     assert.match(nativeCalls, new RegExp(`labels list .*--repo ${target.repo}`));
+    assert.match(nativeCalls, new RegExp(`api --include --repo ${target.repo} /orgs/${target.repo.split("/")[0]}/labels`));
     if (target.colorArgs.length) assert.match(nativeCalls, /--color 7C3AED/);
     else assert.match(nativeCalls, /--color 808080/);
   }
@@ -337,9 +342,114 @@ test("normalizes GitHub label identifiers", async (t) => {
   const result = invoke(directory, ["label", "list"]);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {
-    provider: "github", operation: "label.list", repository: "owner/project",
-    items: [{ id: "LA_kwDO", name: "bug", color: "B60205", description: "Defect" }],
+    provider: "github", operation: "label.list", repository: "owner/project", scope: "all",
+    items: [{ id: "LA_kwDO", name: "bug", color: "B60205", description: "Defect", scope: "repository" }],
   });
+});
+
+test("returns no GitHub organization labels without calling gh", async (t) => {
+  const directory = await fixture(t, {
+    git: 'printf "%s\\n" "git@github.com:owner/project.git"',
+    gh: "exit 99",
+  });
+  const result = invoke(directory, ["label", "list", "--scope", "org"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "github", operation: "label.list", repository: "owner/project", scope: "org", items: [],
+  });
+});
+
+function forgejoOrgLabelFixture(callsFile, { repoLabels = "[]", apiStatus = "HTTP/1.1 200 OK", apiBody = "[]" } = {}) {
+  return {
+    git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"',
+    tea: `
+if [ "$1" = "logins" ]; then printf '%s\\n' '[{"url":"https://forge.example"}]';
+elif [ "$1 $2" = "labels list" ]; then printf '%s\\n' "$*" >> "${callsFile}"; printf '%s\\n' '${repoLabels}';
+elif [ "$1" = "api" ]; then
+  printf '%s\\n' "$*" >> "${callsFile}"
+  if [ -n '${apiStatus}' ]; then printf '%s\\n' '${apiStatus}' 'Content-Type: application/json' >&2; fi
+  printf '%s\\n' '${apiBody}'
+else exit 99; fi`,
+  };
+}
+
+test("lists Forgejo repository and organization labels with their scope", async (t) => {
+  const callsFile = path.join(tmpdir(), `source-control-org-label-calls-${process.pid}-all`);
+  t.after(() => rm(callsFile, { force: true }));
+  const directory = await fixture(t, forgejoOrgLabelFixture(callsFile, {
+    repoLabels: '[{"id":316,"name":"status/new","color":"1d76db","description":"Repo"}]',
+    apiBody: '[{"id":52,"name":"status/new","color":"8b5cf6","description":"Org","exclusive":true},{"id":53,"name":"status/closed","color":"cccccc","description":""}]',
+  }));
+  const result = invoke(directory, ["--provider", "forgejo", "label", "list"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    provider: "forgejo", operation: "label.list", repository: "owner/project", scope: "all",
+    items: [
+      { id: 316, name: "status/new", color: "1d76db", description: "Repo", scope: "repository" },
+      { id: 52, name: "status/new", color: "8b5cf6", description: "Org", scope: "organization" },
+      { id: 53, name: "status/closed", color: "cccccc", description: "", scope: "organization" },
+    ],
+  });
+  const nativeCalls = await readFile(callsFile, "utf8");
+  assert.match(nativeCalls, /^api --include --repo owner\/project \/orgs\/owner\/labels\?limit=30&page=1$/m);
+});
+
+test("limits Forgejo label listing to one scope", async (t) => {
+  for (const [scope, expected, forbidden] of [
+    ["repo", [{ id: 17, name: "repo-only", color: null, description: null, scope: "repository" }], /^api /m],
+    ["org", [{ id: 52, name: "org-only", color: null, description: null, scope: "organization" }], /^labels list/m],
+  ]) {
+    const callsFile = path.join(tmpdir(), `source-control-org-label-calls-${process.pid}-${scope}`);
+    t.after(() => rm(callsFile, { force: true }));
+    const directory = await fixture(t, forgejoOrgLabelFixture(callsFile, {
+      repoLabels: '[{"id":17,"name":"repo-only"}]',
+      apiBody: '[{"id":52,"name":"org-only"}]',
+    }));
+    const result = invoke(directory, ["--provider", "forgejo", "label", "list", "--scope", scope]);
+    assert.equal(result.status, 0, `${scope}: ${result.stderr}`);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.scope, scope);
+    assert.deepEqual(output.items, expected);
+    assert.doesNotMatch(await readFile(callsFile, "utf8"), forbidden);
+  }
+});
+
+test("treats a Forgejo 404 organization lookup as a user-owned repository", async (t) => {
+  const callsFile = path.join(tmpdir(), `source-control-org-label-calls-${process.pid}-404`);
+  t.after(() => rm(callsFile, { force: true }));
+  const directory = await fixture(t, forgejoOrgLabelFixture(callsFile, {
+    repoLabels: '[{"id":17,"name":"bug"}]',
+    apiStatus: "HTTP/1.1 404 Not Found",
+    apiBody: '{"message":"GetOrgByName","errors":["user redirect does not exist [name: owner]"]}',
+  }));
+  const result = invoke(directory, ["--provider", "forgejo", "label", "list"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).items, [{ id: 17, name: "bug", color: null, description: null, scope: "repository" }]);
+});
+
+test("fails Forgejo organization label listing on unusable API responses", async (t) => {
+  for (const [name, options, code, message] of [
+    ["server error", { apiStatus: "HTTP/1.1 500 Internal Server Error", apiBody: '{"message":"boom"}' }, 7, /tea api returned HTTP 500 for organization "owner" labels/],
+    ["missing status", { apiStatus: "", apiBody: "[]" }, 8, /did not report an HTTP status/],
+    ["non-array body", { apiBody: '{"id":1}' }, 8, /expected a JSON array/],
+  ]) {
+    const callsFile = path.join(tmpdir(), `source-control-org-label-calls-${process.pid}-${name.replace(/\s/g, "-")}`);
+    t.after(() => rm(callsFile, { force: true }));
+    const directory = await fixture(t, forgejoOrgLabelFixture(callsFile, options));
+    const result = invoke(directory, ["--provider", "forgejo", "label", "list", "--scope", "org"]);
+    assert.equal(result.status, code, `${name}: ${result.stderr}`);
+    assert.match(result.stderr, message, name);
+    assert.equal(result.stdout, "", name);
+  }
+});
+
+test("rejects unknown label list scopes and arguments", async (t) => {
+  const directory = await fixture(t, { git: 'printf "%s\\n" "git@github.com:owner/project.git"', gh: "exit 99" });
+  for (const args of [["--scope", "team"], ["extra"]]) {
+    const result = invoke(directory, ["label", "list", ...args]);
+    assert.equal(result.status, 2, args.join(" "));
+    assert.match(result.stderr, /--scope must be repo, org, or all|unexpected argument: extra/);
+  }
 });
 
 test("detects a configured Forgejo host and normalizes issues", async (t) => {
@@ -1425,6 +1535,18 @@ test("reports draft promotion in provider capabilities", async (t) => {
   }
 });
 
+test("reports organization label listing only for Forgejo", async (t) => {
+  for (const [provider, scripts, expected] of [
+    ["github", { git: 'printf "%s\\n" "git@github.com:owner/project.git"' }, false],
+    ["forgejo", { git: 'printf "%s\\n" "ssh://git@forge.example/owner/project.git"', tea: 'if [ "$1" = "logins" ]; then printf "[{\\"url\\":\\"https://forge.example\\"}]\\n"; else exit 99; fi' }, true],
+  ]) {
+    const directory = await fixture(t, scripts);
+    const result = invoke(directory, ["capabilities"]);
+    assert.equal(result.status, 0, `${provider}: ${result.stderr}`);
+    assert.equal(JSON.parse(result.stdout).capabilities["label.list.organization"], expected, provider);
+  }
+});
+
 test("reports an actionable diagnostic for unsupported provider commands", async (t) => {
   const directory = await fixture(t, {
     git: 'printf "%s\\n" "git@github.com:owner/project.git"',
@@ -1608,6 +1730,7 @@ function teaStub(versionOutput, log) {
 echo "$*" >> "${log}"
 if [ "$1" = "--version" ]; then ${versionOutput}; exit 0; fi
 if [ "$1 $2" = "labels list" ]; then printf '%s\\n' '${teaLabels}'; exit 0; fi
+if [ "$1" = "api" ]; then printf 'HTTP/1.1 200 OK\\n' >&2; printf '[]\\n'; exit 0; fi
 if [ "$1 $2" = "labels create" ]; then exit 0; fi
 exit 99`;
 }

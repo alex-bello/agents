@@ -1,6 +1,6 @@
 ---
 name: source-control
-version: 1.1.2
+version: 1.2.0
 description: Use Git for local source-control operations and one deterministic command interface for Forgejo and GitHub repository, issue, and pull-request operations. Use when an agent needs to inspect repository state, manage branches, list or view issues and pull requests, read comments or diffs, check CI, create, edit, or close an issue or pull request, comment, or check out a pull request.
 ---
 
@@ -51,6 +51,11 @@ Use `scripts/sc issue edit <number> --add-label <name>` and
 `--remove-label <name>` for label mutations. Repeat either option for multiple
 labels; the wrapper translates these options to the native GitHub or Forgejo
 CLI syntax.
+
+Use `scripts/sc label list` to see every label an issue can carry. On Forgejo
+that includes the owning organization's labels; each item has `scope:
+"repository"` or `scope: "organization"`, and the same name can appear in both.
+Pass `--scope repo` or `--scope org` to narrow the listing.
 
 Use `scripts/sc label delete --id <label-id>` to delete one repository label
 and `scripts/sc issue remove-label <number> --id <label-id>` to detach one

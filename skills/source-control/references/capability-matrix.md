@@ -8,6 +8,7 @@ checked 2026-09-28) and `gh` 2.96. Minimum supported versions are `tea` 0.15.0 a
 | --- | --- | --- |
 | Detect provider from Git remote | yes | yes |
 | Authentication status | yes | yes |
+| Organization label listing (`label list --scope org\|all`) | yes, via `tea api /orgs/{owner}/labels` inside the wrapper; user-owned repositories return no organization labels | no organization labels; `org` scope is always empty |
 | Repository view | yes; visibility may be `null` if Tea's explicit private/public search filters do not uniquely identify the repository; default branch is `null` when Tea does not report it | yes |
 | Local branch creation, switching, fetch, and push | Git-native | Git-native |
 | Issue list/view/comments | yes | yes |
