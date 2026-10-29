@@ -74,11 +74,10 @@ function emit(value: unknown): void {
 }
 
 function executableExists(name: string): boolean {
-  const result = spawnSync("command", ["-v", name], {
-    encoding: "utf8",
-    shell: true,
-    stdio: ["ignore", "ignore", "ignore"],
-  });
+  if (!/^[A-Za-z][A-Za-z0-9._-]*$/.test(name)) return false;
+  const result = process.platform === "win32"
+    ? spawnSync("where.exe", [name], { encoding: "utf8", stdio: ["ignore", "ignore", "ignore"] })
+    : spawnSync("command -v " + name, { encoding: "utf8", shell: true, stdio: ["ignore", "ignore", "ignore"] });
   return result.status === 0;
 }
 

@@ -9,7 +9,7 @@ The source-control CLI is authored in TypeScript at
 `skills/source-control/scripts/sc` bundle runs on the repository's supported
 Node version and remains the entry point for installed skills. The CLI runtime
 supports Node.js 18 or newer. Repository development and validation require
-Node.js 20.19 or newer for the current lint toolchain. Run the TypeScript
+Node.js 24 or newer for the current lint toolchain. Run the TypeScript
 checks and repository validator with:
 
 ```sh

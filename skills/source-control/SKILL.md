@@ -14,8 +14,9 @@ noninteractively, and returns normalized JSON.
 The command implementation is maintained in `src/cli.ts`. `scripts/sc` is the
 generated Node-compatible bundle used by installed skills, so invoking it does
 not require Bun. The installed CLI runtime supports Node.js 18 or newer. The
-repository's development and validation toolchain requires Node.js 20.19 or
-newer. From the repository root, `pnpm run sc:lint` lints the TypeScript source,
+repository's development and validation toolchain requires Node.js 24 or
+newer. From the repository root, `pnpm run sc:lint` lints the TypeScript
+source,
 `pnpm run sc:typecheck` checks it with strict TypeScript settings, and
 `pnpm run validate` runs both checks plus repository validation. `pnpm test`
 runs those gates and the regression suites.

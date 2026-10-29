@@ -1,6 +1,6 @@
 {
   "name": "agents",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "private": true,
   "description": "Reusable Agent Skills and custom agent definitions",
   "scripts": {
@@ -17,7 +17,7 @@
     "skills:list": "pnpm dlx skills@latest add . --list"
   },
   "engines": {
-    "node": ">=20.19.0"
+    "node": ">=24.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
