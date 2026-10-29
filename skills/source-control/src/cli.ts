@@ -32,7 +32,7 @@ const MIN_TEA_VERSION = "0.15.0";
 // (label list, issue/pr list and view, repo view) predates both.
 const MIN_GH_VERSION = "2.57.0";
 const SKIP_VERSION_CHECK_ENV = "SC_SKIP_VERSION_CHECK";
-const VERSION = "0.14.1";
+const VERSION = "0.15.0";
 const sensitiveValues = new Set<string>();
 
 function rememberSensitiveValues() {
@@ -663,6 +663,33 @@ function listForgejoLabels(scoped: string[], limit: number, page = 1, operation 
   return parseJsonRecords(run("tea", ["labels", "list", "--limit", String(limit), "--page", String(page), "--output", "json", ...scoped]).stdout, operation);
 }
 
+// Tea has no native organization-label listing, so this is the wrapper's only use of `tea api`.
+// `tea api` exits 0 on HTTP errors; `--include` writes the status line to stderr so it can be checked.
+function listForgejoOrgLabels(repo: string, limit: number, operation = "label.list"): JsonRecord[] {
+  const owner = repo.split("/")[0];
+  const endpoint = `/orgs/${encodeURIComponent(owner)}/labels?limit=${limit}&page=1`;
+  const result = run("tea", ["api", "--include", "--repo", repo, endpoint]);
+  const status = Number(result.stderr.match(/^HTTP\/[\d.]+\s+(\d{3})/m)?.[1]);
+  if (!Number.isInteger(status)) fail(EXIT.normalize, `could not normalize ${operation} output: tea api did not report an HTTP status for organization "${owner}"`);
+  if (status === 404) return [];
+  if (status < 200 || status >= 300) fail(EXIT.native, `tea api returned HTTP ${status} for organization "${owner}" labels`);
+  const data = parseJson(result.stdout, operation);
+  if (!Array.isArray(data)) fail(EXIT.normalize, `could not normalize ${operation} output: expected a JSON array`);
+  return data;
+}
+
+function parseLabelScope(args: string[]): "repo" | "org" | "all" {
+  const parsed = parseOptions(args, { scope: "value" });
+  if (parsed._.length) fail(EXIT.usage, `unexpected argument: ${parsed._[0]}`);
+  const scope = parsed.scope === "" ? "all" : parsed.scope;
+  if (scope !== "repo" && scope !== "org" && scope !== "all") fail(EXIT.usage, "--scope must be repo, org, or all");
+  return scope;
+}
+
+function scopedLabel(item: JsonRecord, scope: "repository" | "organization"): JsonRecord {
+  return { ...normalizeLabel(item), scope };
+}
+
 function requireFile(path: string, flag: string): string {
   if (!path) fail(EXIT.usage, `${flag} is required`);
   if (!existsSync(path)) fail(EXIT.missing, `file not found: ${path}`);
@@ -907,8 +934,14 @@ function github(operation: string, args: string[], options: GlobalOptions): void
   const repo = repository(options);
   const scoped = repoArgs("github", options);
   if (operation === "label.list") {
-    const data = parseJsonRecords(run("gh", ["label", "list", "--limit", String(options.limit), "--json", "id,name,color,description", ...scoped]).stdout, operation);
-    emit({ provider: "github", operation, repository: repo, items: data.map(normalizeLabel) });
+    // GitHub has no organization labels, so the org scope is always empty.
+    const scope = parseLabelScope(args);
+    const items: JsonRecord[] = [];
+    if (scope !== "org") {
+      const data = parseJsonRecords(run("gh", ["label", "list", "--limit", String(options.limit), "--json", "id,name,color,description", ...scoped]).stdout, operation);
+      items.push(...data.map((item) => scopedLabel(item, "repository")));
+    }
+    emit({ provider: "github", operation, repository: repo, scope, items });
     return;
   }
   if (operation === "label.delete") {
@@ -1150,8 +1183,11 @@ function forgejo(operation: string, args: string[], options: GlobalOptions): voi
   const scoped = repoArgs("forgejo", options);
   const labelScoped = forgejoLabelRepoArgs(options);
   if (operation === "label.list") {
-    const data = listForgejoLabels(labelScoped, options.limit, 1, operation);
-    emit({ provider: "forgejo", operation, repository: repo, items: data.map(normalizeLabel) });
+    const scope = parseLabelScope(args);
+    const items = [];
+    if (scope !== "org") items.push(...listForgejoLabels(labelScoped, options.limit, 1, operation).map((item) => scopedLabel(item, "repository")));
+    if (scope !== "repo") items.push(...listForgejoOrgLabels(requireRepository(repo), options.limit, operation).map((item) => scopedLabel(item, "organization")));
+    emit({ provider: "forgejo", operation, repository: repo, scope, items });
     return;
   }
   if (operation === "label.delete") {
@@ -1460,6 +1496,7 @@ if (resource === "capabilities") {
     capabilities: {
       "repo.view": true,
       "label.list": true,
+      "label.list.organization": provider === "forgejo",
       "label.create": true,
       "label.delete": true,
       "issue.list": true,

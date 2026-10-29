@@ -57,7 +57,7 @@ Global options must precede the resource:
 | `capabilities` | none | none |
 | `auth status` | none | none |
 | `repo view` | none | none |
-| `label list` | none | none |
+| `label list` | none | `--scope repo\|org\|all` (default `all`) |
 | `label create` | `--name TEXT` | `--color HEX`, `--description TEXT` |
 | `label delete` | `--id LABEL_ID` | none |
 | `issue list` | none | `--state open\|closed\|all`, repeated `--label NAME` |
@@ -86,6 +86,19 @@ checks the repository's paginated label list and only reports success when the
 new label is visible. Forgejo label list and create commands use the same
 repository target, including the repository detected from the current Git
 remote.
+
+`label list` reports its `scope` and tags every item with `scope:
+"repository"` or `scope: "organization"`. `--limit` applies to each scope
+separately. A name can appear once per scope, so check `scope` as well as `name`
+when matching. On Forgejo, Tea has no organization-label command, so the wrapper
+reads them with `tea api --include --repo OWNER/NAME
+/orgs/OWNER/labels?limit=N&page=1`. This is the wrapper's only internal use of
+`tea api`; agents still must not call it themselves. `tea api` exits 0 on HTTP
+errors, so the wrapper reads the status line: 404 means the owner is a user, not
+an organization, and yields no organization labels; any other non-2xx status
+exits 7, and a missing status line exits 8. GitHub has no organization labels:
+`--scope org` returns an empty list without calling `gh`. Label mutations,
+including `label delete --id`, still target repository labels only.
 
 `label delete --id LABEL_ID` and `issue remove-label NUMBER --id LABEL_ID`
 require a resolved repository and search its complete label set. Forgejo label

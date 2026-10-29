@@ -59,6 +59,11 @@ Use `scripts/sc issue edit <number> --add-label <name>` and
 labels; the wrapper translates these options to the native GitHub or Forgejo
 CLI syntax.
 
+Use `scripts/sc label list` to see every label an issue can carry. On Forgejo
+that includes the owning organization's labels; each item has `scope:
+"repository"` or `scope: "organization"`, and the same name can appear in both.
+Pass `--scope repo` or `--scope org` to narrow the listing.
+
 Use `scripts/sc label delete --id <label-id>` to delete one repository label
 and `scripts/sc issue remove-label <number> --id <label-id>` to detach one
 label ID from an issue. Both commands resolve the complete label set in the
